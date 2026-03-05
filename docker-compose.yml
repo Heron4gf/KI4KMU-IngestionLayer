@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: pdf-ingestion-api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+      CHROMA_COLLECTION: documents
+      UNSTRUCTURED_URL: http://unstructured:8000/general/v0/general
+      UNSTRUCTURED_CHUNKING_STRATEGY: by_title
+      UNSTRUCTURED_MAX_CHARACTERS: "1000"
+      UNSTRUCTURED_OVERLAP: "150"
+      OCR_URL: http://ocr-service:8002/ocr
+    depends_on:
+      - chromadb
+      - unstructured
+    networks:
+      - backend
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    restart: unless-stopped
+    volumes:
+      - ./chroma-data:/data
+    ports:
+      - "8000:8000"
+    networks:
+      - backend
+
+  unstructured:
+    image: robwilkes/unstructured-api:latest
+    container_name: unstructured
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    networks:
+      - backend
+
+networks:
+  backend:
