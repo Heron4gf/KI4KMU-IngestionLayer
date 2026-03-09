@@ -88,6 +88,7 @@ dmypy.json
 
 # macOS
 .DS_Store
+models/
 
 # Windows
 Thumbs.db

@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
@@ -5,20 +6,25 @@ import torch
 import chromadb
 from PIL import Image
 from sentence_transformers import SentenceTransformer
-from transformers import AutoModel, AutoProcessor
+from openai import OpenAI
 
 from models import QueryResultItem
 from utils import cast_to_str, sanitize_metadata, image_to_b64, get_image_path
+import base64
+import io
 
+
+logger = logging.getLogger(__name__)
 
 CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
-
-TEXT_COLLECTION = os.getenv("CHROMA_TEXT_COLLECTION", "documents_text")
-IMAGE_COLLECTION = os.getenv("CHROMA_IMAGE_COLLECTION", "documents_image")
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
-IMAGE_MODEL = os.getenv("IMAGE_EMBEDDING_MODEL", "google/siglip2-so400m-patch14-384")
+
+LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://host.docker.internal:1234/v1")
+LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "lmstudio-community/Qwen3.5-0.8B-GGUF")
+CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS", "256"))
 
 
 class TextEmbedder:
@@ -37,186 +43,250 @@ class TextEmbedder:
         return [e.tolist() for e in embeddings]
 
 
-class ImageEmbedder:
-    def __init__(self, model_id: str = IMAGE_MODEL):
-        self._processor = AutoProcessor.from_pretrained(model_id)
-        self._model = AutoModel.from_pretrained(model_id).eval()
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._model.to(self._device)
+class Captioner:
+    def __init__(self):
+        self._client = OpenAI(base_url=LMSTUDIO_URL, api_key="dummy")
 
-    def embed_images(self, images: List[Image.Image]) -> List[List[float]]:
-        inputs = self._processor(images=images, return_tensors="pt").to(self._device)
-        with torch.no_grad():
-            output = self._model.get_image_features(**inputs)
-            features = output if isinstance(output, torch.Tensor) else output.pooler_output
-        features = features / features.norm(p=2, dim=-1, keepdim=True)
-        return features.cpu().tolist()
+    def caption(self, image: Image.Image) -> str:
+        b64 = image_to_b64(image)
+        response = self._client.chat.completions.create(
+            model=LMSTUDIO_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Describe this image in detail. If it contains charts, tables, or diagrams, explain what they show.",
+                        },
+                    ],
+                }
+            ],
+            max_tokens=CAPTION_MAX_TOKENS,
+            temperature=0.1,
+        )
+        return response.choices[0].message.content.strip()
 
 
 text_embedder = TextEmbedder()
-image_embedder = ImageEmbedder()
+captioner = Captioner()
 
 chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
-
-text_collection = chroma_client.get_or_create_collection(name=TEXT_COLLECTION)
-image_collection = chroma_client.get_or_create_collection(name=IMAGE_COLLECTION)
+collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION)
 
 
 def document_already_ingested(pdf_hash: str) -> bool:
-    res_text = text_collection.get(where={"pdf_hash": pdf_hash}, limit=1)
-    if len(res_text.get("ids", [])) > 0:
-        return True
-    res_image = image_collection.get(where={"pdf_hash": pdf_hash}, limit=1)
-    return len(res_image.get("ids", [])) > 0
+    res = collection.get(where={"pdf_hash": pdf_hash}, limit=1)
+    return len(res.get("ids", [])) > 0
 
 
 def build_chroma_payload(
-    elements: List[Dict[str, Any]], document_id: str, pdf_hash: str
-) -> Dict[str, Dict[str, List[Any]]]:
-    text_ids: List[str] = []
-    text_metadatas: List[Dict] = []
-    text_documents: List[str] = []
+    text_elements: List[Dict[str, Any]],
+    image_elements: List[Dict[str, Any]],
+    document_id: str,
+    pdf_hash: str,
+) -> Dict[str, List[Any]]:
+    """
+    Build payload for Chroma from text chunks and image elements.
+    
+    Args:
+        text_elements: List of text chunk elements from Unstructured
+        image_elements: List of raw image elements from Unstructured (with base64)
+        document_id: Unique identifier for the document
+        pdf_hash: MD5 hash of the PDF file
+    
+    Returns:
+        Dictionary with ids, embeddings, documents, metadatas ready for Chroma
+    """
+    ids: List[str] = []
+    metadatas: List[Dict] = []
+    documents: List[str] = []
     texts_to_embed: List[str] = []
-
-    image_ids: List[str] = []
-    image_metadatas: List[Dict] = []
-    image_documents: List[str] = []
-    images_to_embed: List[Image.Image] = []
-
-    for idx, element in enumerate(elements):
+    
+    idx_counter = 0
+    
+    # Process text elements first
+    logger.info(f"[CHROMA] Processing {len(text_elements)} text chunks")
+    for element in text_elements:
         element_type = cast_to_str(element.get("type", ""))
         raw_metadata = element.get("metadata") or {}
         metadata = sanitize_metadata(raw_metadata)
         metadata["document_id"] = document_id
         metadata["element_type"] = element_type
         metadata["pdf_hash"] = pdf_hash
-
-        if element_type == "Image":
-            image_path = get_image_path(element)
-            if not image_path:
+        
+        text = cast_to_str(element.get("text"))
+        if not text:
+            logger.warning(f"[CHROMA] Text element missing text content, skipping")
+            continue
+        
+        metadata["modality"] = "text"
+        
+        ids.append(f"{document_id}-{idx_counter}")
+        metadatas.append(metadata)
+        documents.append(text)
+        texts_to_embed.append(text)
+        idx_counter += 1
+    
+    logger.info(f"[CHROMA] Added {len(text_elements)} text chunks to payload")
+    
+    # Process image elements
+    logger.info(f"[CHROMA] Processing {len(image_elements)} raw images")
+    images_with_caption = 0
+    images_skipped = 0
+    
+    for element in image_elements:
+        element_type = cast_to_str(element.get("type", ""))
+        raw_metadata = element.get("metadata") or {}
+        metadata = sanitize_metadata(raw_metadata)
+        metadata["document_id"] = document_id
+        metadata["element_type"] = element_type
+        metadata["pdf_hash"] = pdf_hash
+        
+        # Get base64 from metadata (provided by extract_images_with_unstructured)
+        image_b64 = raw_metadata.get("image_base64")
+        
+        if not image_b64:
+            logger.warning(f"[CHROMA] Image element missing image_base64, skipping")
+            images_skipped += 1
+            continue
+        
+        # Decode base64 to image
+        try:
+            img_data = base64.b64decode(image_b64)
+            img = Image.open(io.BytesIO(img_data)).convert("RGB")
+        except Exception as e:
+            logger.warning(f"[CHROMA] Failed to decode image base64: {e}, skipping")
+            images_skipped += 1
+            continue
+        
+        # Generate caption using VLM
+        try:
+            caption = captioner.caption(img)
+            if not caption:
+                logger.warning(f"[CHROMA] Caption generation returned empty, skipping image")
+                images_skipped += 1
                 continue
-            try:
-                img = Image.open(image_path).convert("RGB")
-            except Exception:
-                continue
-            metadata["modality"] = "image"
-            image_ids.append(f"{document_id}-{idx}")
-            image_metadatas.append(metadata)
-            image_documents.append(image_to_b64(img))
-            images_to_embed.append(img)
-        else:
-            text = cast_to_str(element.get("text"))
-            if not text:
-                continue
-            metadata["modality"] = "text"
-            text_ids.append(f"{document_id}-{idx}")
-            text_metadatas.append(metadata)
-            text_documents.append(text)
-            texts_to_embed.append(text)
-
-    text_embeddings: List[List[float]] = []
-    image_embeddings: List[List[float]] = []
-
+            logger.debug(f"[CHROMA] Generated caption: {caption[:100]}...")
+        except Exception as e:
+            logger.warning(f"[CHROMA] Caption generation failed: {e}, skipping image")
+            images_skipped += 1
+            continue
+        
+        # Image successfully processed
+        metadata["modality"] = "image"
+        metadata["image_b64"] = image_b64
+        
+        ids.append(f"{document_id}-{idx_counter}")
+        metadatas.append(metadata)
+        documents.append(caption)  # Caption becomes the document text
+        texts_to_embed.append(caption)  # Embed the caption, not the raw image
+        idx_counter += 1
+        images_with_caption += 1
+    
+    logger.info(
+        f"[CHROMA] Added {images_with_caption} images with captions to payload"
+    )
+    logger.info(
+        f"[CHROMA] Images skipped: {images_skipped} (no base64: {images_skipped > 0})"
+    )
+    
+    # Generate embeddings for all texts (both text chunks and image captions)
+    embeddings: List[List[float]] = []
     if texts_to_embed:
-        text_embeddings = text_embedder.embed_texts(texts_to_embed)
-
-    if images_to_embed:
-        image_embeddings = image_embedder.embed_images(images_to_embed)
-
+        logger.info(f"[CHROMA] Generating embeddings for {len(texts_to_embed)} texts")
+        embeddings = text_embedder.embed_texts(texts_to_embed)
+    
+    total_elements = len(ids)
+    logger.info(
+        f"[CHROMA] Total payload: {total_elements} elements "
+        f"({len(text_elements)} text + {images_with_caption} images)"
+    )
+    
     return {
-        "text": {
-            "ids": text_ids,
-            "embeddings": text_embeddings,
-            "documents": text_documents,
-            "metadatas": text_metadatas,
-        },
-        "image": {
-            "ids": image_ids,
-            "embeddings": image_embeddings,
-            "documents": image_documents,
-            "metadatas": image_metadatas,
-        },
+        "ids": ids,
+        "embeddings": embeddings,
+        "documents": documents,
+        "metadatas": metadatas,
     }
 
 
 def store_chunks_in_chroma(
-    elements: List[Dict[str, Any]], document_id: str, pdf_hash: str
+    text_elements: List[Dict[str, Any]],
+    image_elements: List[Dict[str, Any]],
+    document_id: str,
+    pdf_hash: str,
 ) -> int:
-    payload = build_chroma_payload(elements, document_id, pdf_hash)
-
-    text_payload = payload["text"]
-    image_payload = payload["image"]
-
-    total = 0
-
-    if text_payload["ids"]:
-        text_collection.add(
-            ids=text_payload["ids"],
-            embeddings=text_payload["embeddings"],
-            documents=text_payload["documents"],
-            metadatas=text_payload["metadatas"],
-        )
-        total += len(text_payload["ids"])
-
-    if image_payload["ids"]:
-        image_collection.add(
-            ids=image_payload["ids"],
-            embeddings=image_payload["embeddings"],
-            documents=image_payload["documents"],
-            metadatas=image_payload["metadatas"],
-        )
-        total += len(image_payload["ids"])
-
-    return total
+    """
+    Store text chunks and images in Chroma collection.
+    
+    This function:
+    1. Builds payload from both text and image elements
+    2. Embeds everything with text_embedder (pplx-embed)
+    3. Stores in a single collection
+    4. Returns total number of stored elements
+    """
+    logger.info(f"[CHROMA] Starting storage for document: {document_id}")
+    
+    payload = build_chroma_payload(
+        text_elements, image_elements, document_id, pdf_hash
+    )
+    
+    if not payload["ids"]:
+        logger.warning(f"[CHROMA] No elements to store for document: {document_id}")
+        return 0
+    
+    # Count modalities before adding
+    text_count = sum(1 for m in payload["metadatas"] if m.get("modality") == "text")
+    image_count = sum(1 for m in payload["metadatas"] if m.get("modality") == "image")
+    
+    logger.info(
+        f"[CHROMA] Storing {len(payload['ids'])} elements in Chroma: "
+        f"{text_count} text + {image_count} image"
+    )
+    
+    collection.add(
+        ids=payload["ids"],
+        embeddings=payload["embeddings"],
+        documents=payload["documents"],
+        metadatas=payload["metadatas"],
+    )
+    
+    logger.info(f"[CHROMA] Successfully stored {len(payload['ids'])} elements in Chroma")
+    
+    return len(payload["ids"])
 
 
 def semantic_search(
     query: str,
     top_k: int,
-    query_image_path: Optional[str] = None,
 ) -> List[QueryResultItem]:
     if top_k <= 0:
         top_k = 5
 
+    query_embeddings = text_embedder.embed_texts([query])
+    raw = collection.query(
+        query_embeddings=query_embeddings,
+        n_results=top_k,
+    )
+
+    documents = raw.get("documents", [[]])[0]
+    metadatas = raw.get("metadatas", [[]])[0]
+    distances = raw.get("distances", [[]])[0]
+
     results: List[QueryResultItem] = []
-
-    if query_image_path:
-        img = Image.open(query_image_path).convert("RGB")
-        query_embeddings = image_embedder.embed_images([img])
-        raw_image = image_collection.query(
-            query_embeddings=query_embeddings,
-            n_results=top_k,
+    for doc, meta, dist in zip(documents, metadatas, distances):
+        is_image = meta.get("modality") == "image"
+        item = QueryResultItem(
+            id=str(meta.get("document_id", "")),
+            text=str(doc) if not is_image else "[image]",
+            score=float(dist),
+            metadata=meta or {},
         )
-        image_documents = raw_image.get("documents", [[]])[0]
-        image_metadatas = raw_image.get("metadatas", [[]])[0]
-        image_distances = raw_image.get("distances", [[]])[0]
-
-        for doc, meta, dist in zip(image_documents, image_metadatas, image_distances):
-            item = QueryResultItem(
-                id=str(meta.get("document_id", "")),
-                text="[image]",
-                score=float(dist),
-                metadata=meta or {},
-            )
-            results.append(item)
-    else:
-        query_embeddings = text_embedder.embed_texts([query])
-        raw_text = text_collection.query(
-            query_embeddings=query_embeddings,
-            n_results=top_k,
-        )
-
-        text_documents = raw_text.get("documents", [[]])[0]
-        text_metadatas = raw_text.get("metadatas", [[]])[0]
-        text_distances = raw_text.get("distances", [[]])[0]
-
-        for doc, meta, dist in zip(text_documents, text_metadatas, text_distances):
-            item = QueryResultItem(
-                id=str(meta.get("document_id", "")),
-                text=str(doc),
-                score=float(dist),
-                metadata=meta or {},
-            )
-            results.append(item)
+        results.append(item)
 
     return results
