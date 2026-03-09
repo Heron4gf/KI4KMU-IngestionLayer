@@ -13,13 +13,12 @@ services:
       UNSTRUCTURED_CHUNKING_STRATEGY: by_title
       UNSTRUCTURED_MAX_CHARACTERS: "1000"
       UNSTRUCTURED_OVERLAP: "150"
-      LMSTUDIO_URL: http://ollama:11434/v1
-      LMSTUDIO_MODEL: qwen3.5
+      LMSTUDIO_URL: http://10.175.25.43:1234/v1
+      LMSTUDIO_MODEL: qwen3.5-0.8b:3
       CAPTION_MAX_TOKENS: "256"
     depends_on:
       - chromadb
       - unstructured
-      - ollama
     networks:
       - backend
 
@@ -40,17 +39,6 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8000"
-    networks:
-      - backend
-
-  ollama:
-    build:
-      context: .
-      dockerfile: Dockerfile.ollama
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
     networks:
       - backend
 
