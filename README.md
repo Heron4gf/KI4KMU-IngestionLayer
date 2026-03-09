@@ -25,6 +25,18 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 ## Architecture
 ![Architecture](./image.png)
 
+### Vector Database Configuration
+
+The system utilizes **two separate vector spaces** in ChromaDB for optimal performance and precision:
+
+| Vector Space | Embedding Model | Purpose |
+|--------------|-----------------|---------|
+| **Images** | [SigLip 2](https://huggingface.co/blog/siglip2) | Image embeddings for visual content analysis |
+| **Text** | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-4b) | Text embeddings for semantic search |
+
+This dual-space architecture provides:
+- **Scalability**: Independent scaling of image and text processing pipelines
+- **Precision**: Specialized embedding models optimized for their respective content types, ensuring the highest accuracy for each modality
 
 ## Prerequisites
 
