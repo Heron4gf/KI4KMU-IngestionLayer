@@ -254,7 +254,3 @@ IngestionLayer/
 Interactive API documentation is available at:
 - **Swagger UI**: http://localhost:8001/docs
 - **ReDoc**: http://localhost:8001/redoc
-
-## License
-
-MIT License

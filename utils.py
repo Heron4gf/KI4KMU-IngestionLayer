@@ -1,4 +1,7 @@
 import hashlib
+import base64
+from PIL import Image
+from io import BytesIO
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -33,6 +36,19 @@ def sanitize_metadata(raw: Any) -> Dict[str, Any]:
 
     return clean
 
+
+def get_image_path(element: Dict[str, Any]) -> Optional[str]:
+    return (
+        element.get("image_path")
+        or (element.get("metadata") or {}).get("image_path")
+        or (element.get("metadata") or {}).get("file_path")
+    )
+
+
+def image_to_b64(img: Image.Image) -> str:
+    buffer = BytesIO()
+    img.save(buffer, format="JPEG", quality=85)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 async def save_upload_to_disk(file: UploadFile) -> Path:
     temp_dir = Path("/tmp/ingestion")

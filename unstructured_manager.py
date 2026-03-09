@@ -37,6 +37,7 @@ async def chunk_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
             "chunking_strategy": UNSTRUCTURED_CHUNKING_STRATEGY,
             "max_characters": UNSTRUCTURED_MAX_CHARACTERS,
             "overlap": UNSTRUCTURED_OVERLAP,
+            "skip_infer_table_types": []
         }
         response = await client.post(
             UNSTRUCTURED_URL,
