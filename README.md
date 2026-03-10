@@ -49,9 +49,9 @@ This unified architecture provides:
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- pip (Python package manager)
-- Docker and Docker Compose
+- [Python 3.11](https://www.python.org/downloads/release/python-3110/) or higher
+- [pip](https://pypi.org/project/pip/) (Python package manager)
+- [Docker](https://www.docker.com/) and Docker Compose
 
 ## Installation
 
