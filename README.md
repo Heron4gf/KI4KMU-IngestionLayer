@@ -12,7 +12,6 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 - [Running](#running)
 - [REST API Endpoints](#rest-api-endpoints)
 - [Docker Deployment](#docker-deployment)
-- [Project Structure](#project-structure)
 
 ## Features
 
@@ -251,25 +250,6 @@ The `docker-compose.yml` defines:
 - Port mapping: 8001:8001
 - Volume persistence for ChromaDB data
 - Build context: current directory
-
-## Project Structure
-
-```
-IngestionLayer/
-├── app.py                 # FastAPI application with REST endpoints
-├── chroma_manager.py      # ChromaDB vector database operations
-├── models.py              # Pydantic data models
-├── unstructured_manager.py# PDF parsing with Unstructured.io
-├── utils.py               # Utility functions (file handling, hashing)
-├── requirements.txt       # Python dependencies
-├── Dockerfile             # Docker image definition
-├── docker-compose.yml     # Docker Compose configuration
-├── .gitignore            # Git ignore patterns
-├── .dockerignore         # Docker ignore patterns
-├── README.md             # This documentation
-├── uploads/              # Temporary upload storage (auto-created)
-└── chroma-data/          # ChromaDB persistent storage (auto-created)
-```
 
 ## API Documentation
 
