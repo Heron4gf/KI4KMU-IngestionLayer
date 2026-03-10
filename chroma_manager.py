@@ -4,14 +4,10 @@ from typing import Any, Dict, List, Optional
 
 import torch
 import chromadb
-from PIL import Image
 from sentence_transformers import SentenceTransformer
-from openai import OpenAI
 
 from models import QueryResultItem
-from utils import cast_to_str, sanitize_metadata, image_to_b64, get_image_path
-import base64
-import io
+from utils import cast_to_str, sanitize_metadata
 
 
 logger = logging.getLogger(__name__)
@@ -22,12 +18,14 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
 
-LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://host.docker.internal:1234/v1")
-LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "lmstudio-community/Qwen3.5-0.8B-GGUF")
-CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS", "256"))
-
 
 class TextEmbedder:
+    """
+    Text embedding service using SentenceTransformer.
+    
+    This class is responsible solely for generating text embeddings.
+    It does not handle any image processing or ML inference beyond embeddings.
+    """
     def __init__(self, model_id: str = TEXT_MODEL):
         self._model = SentenceTransformer(model_id, trust_remote_code=True)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -43,37 +41,7 @@ class TextEmbedder:
         return [e.tolist() for e in embeddings]
 
 
-class Captioner:
-    def __init__(self):
-        self._client = OpenAI(base_url=LMSTUDIO_URL, api_key="dummy")
-
-    def caption(self, image: Image.Image) -> str:
-        b64 = image_to_b64(image)
-        response = self._client.chat.completions.create(
-            model=LMSTUDIO_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                        },
-                        {
-                            "type": "text",
-                            "text": "Describe this image in detail. If it contains charts, tables, or diagrams, explain what they show.",
-                        },
-                    ],
-                }
-            ],
-            max_tokens=CAPTION_MAX_TOKENS,
-            temperature=0.1,
-        )
-        return response.choices[0].message.content.strip()
-
-
 text_embedder = TextEmbedder()
-captioner = Captioner()
 
 chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
 collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION)
@@ -84,47 +52,65 @@ def document_already_ingested(pdf_hash: str) -> bool:
     return len(res.get("ids", [])) > 0
 
 
-def build_chroma_payload(
-    text_elements: List[Dict[str, Any]],
-    image_elements: List[Dict[str, Any]],
+def _build_element_metadata(
+    element: Dict[str, Any],
     document_id: str,
     pdf_hash: str,
-) -> Dict[str, List[Any]]:
+) -> Dict[str, Any]:
     """
-    Build payload for Chroma from text chunks and image elements.
+    Build base metadata dictionary for a text or image element.
     
     Args:
-        text_elements: List of text chunk elements from Unstructured
-        image_elements: List of raw image elements from Unstructured (with base64)
+        element: The element dictionary from Unstructured
         document_id: Unique identifier for the document
         pdf_hash: MD5 hash of the PDF file
     
     Returns:
-        Dictionary with ids, embeddings, documents, metadatas ready for Chroma
+        Sanitized metadata dictionary with document_id, element_type, and pdf_hash
+    """
+    element_type = cast_to_str(element.get("type", ""))
+    raw_metadata = element.get("metadata") or {}
+    metadata = sanitize_metadata(raw_metadata)
+    metadata["document_id"] = document_id
+    metadata["element_type"] = element_type
+    metadata["pdf_hash"] = pdf_hash
+    return metadata
+
+
+def _process_text_elements(
+    text_elements: List[Dict[str, Any]],
+    document_id: str,
+    pdf_hash: str,
+    start_index: int,
+) -> tuple[List[str], List[Dict], List[str], List[str], int]:
+    """
+    Process text chunk elements and build payload components.
+    
+    Args:
+        text_elements: List of text chunk elements from Unstructured
+        document_id: Unique identifier for the document
+        pdf_hash: MD5 hash of the PDF file
+        start_index: Starting index for ID counter
+    
+    Returns:
+        Tuple of (ids, metadatas, documents, texts_to_embed, new_index)
     """
     ids: List[str] = []
     metadatas: List[Dict] = []
     documents: List[str] = []
     texts_to_embed: List[str] = []
+    idx_counter = start_index
     
-    idx_counter = 0
-    
-    # Process text elements first
     logger.info(f"[CHROMA] Processing {len(text_elements)} text chunks")
+    
     for element in text_elements:
-        element_type = cast_to_str(element.get("type", ""))
-        raw_metadata = element.get("metadata") or {}
-        metadata = sanitize_metadata(raw_metadata)
-        metadata["document_id"] = document_id
-        metadata["element_type"] = element_type
-        metadata["pdf_hash"] = pdf_hash
+        metadata = _build_element_metadata(element, document_id, pdf_hash)
+        metadata["modality"] = "text"
         
         text = cast_to_str(element.get("text"))
         if not text:
             logger.warning(f"[CHROMA] Text element missing text content, skipping")
             continue
-        
-        metadata["modality"] = "text"
         
         ids.append(f"{document_id}-{idx_counter}")
         metadatas.append(metadata)
@@ -132,79 +118,145 @@ def build_chroma_payload(
         texts_to_embed.append(text)
         idx_counter += 1
     
-    logger.info(f"[CHROMA] Added {len(text_elements)} text chunks to payload")
+    logger.info(f"[CHROMA] Added {len(ids)} text chunks to payload")
+    return ids, metadatas, documents, texts_to_embed, idx_counter
+
+
+def _process_captioned_images(
+    captioned_images: List[Dict[str, Any]],
+    document_id: str,
+    pdf_hash: str,
+    start_index: int,
+) -> tuple[List[str], List[Dict], List[str], List[str], int, int, int]:
+    """
+    Process pre-captioned image elements and build payload components.
     
-    # Process image elements
-    logger.info(f"[CHROMA] Processing {len(image_elements)} raw images")
-    images_with_caption = 0
+    Args:
+        captioned_images: List of image elements with pre-computed captions
+        document_id: Unique identifier for the document
+        pdf_hash: MD5 hash of the PDF file
+        start_index: Starting index for ID counter
+    
+    Returns:
+        Tuple of (ids, metadatas, documents, texts_to_embed, images_added, images_skipped, new_index)
+    """
+    ids: List[str] = []
+    metadatas: List[Dict] = []
+    documents: List[str] = []
+    texts_to_embed: List[str] = []
+    idx_counter = start_index
+    images_added = 0
     images_skipped = 0
     
-    for element in image_elements:
-        element_type = cast_to_str(element.get("type", ""))
-        raw_metadata = element.get("metadata") or {}
-        metadata = sanitize_metadata(raw_metadata)
-        metadata["document_id"] = document_id
-        metadata["element_type"] = element_type
-        metadata["pdf_hash"] = pdf_hash
+    logger.info(f"[CHROMA] Processing {len(captioned_images)} captioned images")
+    
+    for element in captioned_images:
+        metadata = _build_element_metadata(element, document_id, pdf_hash)
         
-        # Get base64 from metadata (provided by extract_images_with_unstructured)
+        # Get pre-computed caption from metadata
+        raw_metadata = element.get("metadata") or {}
+        caption = raw_metadata.get("image_caption")
         image_b64 = raw_metadata.get("image_base64")
+        
+        if not caption:
+            logger.warning(f"[CHROMA] Image element missing caption, skipping")
+            images_skipped += 1
+            continue
         
         if not image_b64:
             logger.warning(f"[CHROMA] Image element missing image_base64, skipping")
             images_skipped += 1
             continue
         
-        # Decode base64 to image
-        try:
-            img_data = base64.b64decode(image_b64)
-            img = Image.open(io.BytesIO(img_data)).convert("RGB")
-        except Exception as e:
-            logger.warning(f"[CHROMA] Failed to decode image base64: {e}, skipping")
-            images_skipped += 1
-            continue
-        
-        # Generate caption using VLM
-        try:
-            caption = captioner.caption(img)
-            if not caption:
-                logger.warning(f"[CHROMA] Caption generation returned empty, skipping image")
-                images_skipped += 1
-                continue
-            logger.debug(f"[CHROMA] Generated caption: {caption[:100]}...")
-        except Exception as e:
-            logger.warning(f"[CHROMA] Caption generation failed: {e}, skipping image")
-            images_skipped += 1
-            continue
-        
-        # Image successfully processed
+        # Image has pre-computed caption, add to payload
         metadata["modality"] = "image"
         metadata["image_b64"] = image_b64
         
         ids.append(f"{document_id}-{idx_counter}")
         metadatas.append(metadata)
-        documents.append(caption)  # Caption becomes the document text
-        texts_to_embed.append(caption)  # Embed the caption, not the raw image
+        documents.append(caption)
+        texts_to_embed.append(caption)
         idx_counter += 1
-        images_with_caption += 1
+        images_added += 1
     
-    logger.info(
-        f"[CHROMA] Added {images_with_caption} images with captions to payload"
-    )
-    logger.info(
-        f"[CHROMA] Images skipped: {images_skipped} (no base64: {images_skipped > 0})"
-    )
+    logger.info(f"[CHROMA] Added {images_added} captioned images to payload")
+    if images_skipped > 0:
+        logger.warning(f"[CHROMA] Skipped {images_skipped} images (missing caption or base64)")
     
-    # Generate embeddings for all texts (both text chunks and image captions)
+    return ids, metadatas, documents, texts_to_embed, images_added, images_skipped, idx_counter
+
+
+def _generate_embeddings(texts_to_embed: List[str]) -> List[List[float]]:
+    """
+    Generate embeddings for a list of texts.
+    
+    Args:
+        texts_to_embed: List of text strings to embed
+    
+    Returns:
+        List of embedding vectors
+    """
     embeddings: List[List[float]] = []
     if texts_to_embed:
         logger.info(f"[CHROMA] Generating embeddings for {len(texts_to_embed)} texts")
         embeddings = text_embedder.embed_texts(texts_to_embed)
+    return embeddings
+
+
+def build_chroma_payload(
+    text_elements: List[Dict[str, Any]],
+    captioned_images: List[Dict[str, Any]],
+    document_id: str,
+    pdf_hash: str,
+) -> Dict[str, List[Any]]:
+    """
+    Build payload for Chroma from text chunks and pre-captioned images.
+    
+    This function is purely for data transformation - it does NOT perform
+    any ML inference. Captions must be pre-computed by the service layer.
+    
+    Args:
+        text_elements: List of text chunk elements from Unstructured
+        captioned_images: List of image elements with pre-computed captions
+                         (caption stored in metadata["image_caption"])
+        document_id: Unique identifier for the document
+        pdf_hash: MD5 hash of the PDF file
+    
+    Returns:
+        Dictionary with ids, embeddings, documents, metadatas ready for Chroma
+    """
+    # Process text elements
+    text_ids, text_metadatas, text_documents, text_texts_to_embed, idx_counter = (
+        _process_text_elements(text_elements, document_id, pdf_hash, start_index=0)
+    )
+    
+    # Process captioned images
+    (
+        image_ids,
+        image_metadatas,
+        image_documents,
+        image_texts_to_embed,
+        images_added,
+        images_skipped,
+        _,
+    ) = _process_captioned_images(
+        captioned_images, document_id, pdf_hash, start_index=idx_counter
+    )
+    
+    # Combine all components
+    ids = text_ids + image_ids
+    metadatas = text_metadatas + image_metadatas
+    documents = text_documents + image_documents
+    texts_to_embed = text_texts_to_embed + image_texts_to_embed
+    
+    # Generate embeddings for all texts
+    embeddings = _generate_embeddings(texts_to_embed)
     
     total_elements = len(ids)
+    text_count = len(text_ids)
     logger.info(
         f"[CHROMA] Total payload: {total_elements} elements "
-        f"({len(text_elements)} text + {images_with_caption} images)"
+        f"({text_count} text + {images_added} images)"
     )
     
     return {
@@ -217,23 +269,31 @@ def build_chroma_payload(
 
 def store_chunks_in_chroma(
     text_elements: List[Dict[str, Any]],
-    image_elements: List[Dict[str, Any]],
+    captioned_images: List[Dict[str, Any]],
     document_id: str,
     pdf_hash: str,
 ) -> int:
     """
-    Store text chunks and images in Chroma collection.
+    Store text chunks and pre-captioned images in Chroma collection.
     
-    This function:
-    1. Builds payload from both text and image elements
-    2. Embeds everything with text_embedder (pplx-embed)
-    3. Stores in a single collection
-    4. Returns total number of stored elements
+    This function is strictly for database operations. It does NOT perform
+    any ML inference (captioning, etc.). All captions must be pre-computed
+    by the service layer.
+    
+    Args:
+        text_elements: List of text chunk elements from Unstructured
+        captioned_images: List of image elements with pre-computed captions
+                         (caption stored in metadata["image_caption"])
+        document_id: Unique identifier for the document
+        pdf_hash: MD5 hash of the PDF file
+    
+    Returns:
+        Total number of elements stored in Chroma
     """
     logger.info(f"[CHROMA] Starting storage for document: {document_id}")
     
     payload = build_chroma_payload(
-        text_elements, image_elements, document_id, pdf_hash
+        text_elements, captioned_images, document_id, pdf_hash
     )
     
     if not payload["ids"]:

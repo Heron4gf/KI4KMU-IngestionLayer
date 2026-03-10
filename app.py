@@ -4,16 +4,9 @@ from typing import Dict
 
 from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile, status
 
-from chroma_manager import (
-    document_already_ingested,
-    semantic_search,
-    store_chunks_in_chroma,
-)
+from chroma_manager import document_already_ingested, semantic_search
 from models import IngestionResult, QueryRequest, QueryResponse
-from unstructured_manager import (
-    chunk_pdf_with_unstructured,
-    extract_images_with_unstructured,
-)
+from services import process_document
 from utils import file_md5, save_upload_to_disk
 
 
@@ -26,6 +19,7 @@ v1_router = APIRouter(prefix="/v1")
 
 @v1_router.get("/health", status_code=status.HTTP_200_OK)
 async def health() -> Dict[str, str]:
+    """Health check endpoint."""
     return {"status": "ok"}
 
 
@@ -38,12 +32,10 @@ async def ingest_document(file: UploadFile = File(...)) -> IngestionResult:
     """
     Ingest a PDF document into the vector store.
     
-    Pipeline:
-    1. Extract text chunks (chunking_strategy=by_title)
-    2. Extract raw images with base64 payload
-    3. Generate captions for images using VLM
-    4. Store everything in a single Chroma collection
+    This endpoint handles HTTP request/response only. All business logic
+    is delegated to the service layer (services.process_document).
     """
+    # Validate file type
     if file.content_type not in ("application/pdf", "application/x-pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -56,34 +48,25 @@ async def ingest_document(file: UploadFile = File(...)) -> IngestionResult:
     try:
         pdf_hash = file_md5(pdf_path)
 
+        # Check for duplicate ingestion
         if document_already_ingested(pdf_hash):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This document has already been ingested.",
             )
 
-        # Step 1: Extract text chunks only (no image extraction)
-        logger.info(f"[INGEST] Step 1: Extracting text chunks from {file.filename}")
-        text_elements = await chunk_pdf_with_unstructured(pdf_path)
-        logger.info(f"[INGEST] Extracted {len(text_elements)} text chunks")
-
-        # Step 2: Extract raw images with base64 payload (no chunking)
-        logger.info(f"[INGEST] Step 2: Extracting raw images from {file.filename}")
-        image_elements = await extract_images_with_unstructured(pdf_path)
-        logger.info(f"[INGEST] Extracted {len(image_elements)} raw images")
-
-        # Step 3: Store both text chunks and images in Chroma
-        # Images are embedded via their captions, base64 stored in metadata
-        logger.info(f"[INGEST] Step 3: Storing in Chroma")
-        num_chunks = store_chunks_in_chroma(
-            text_elements, image_elements, document_id, pdf_hash
-        )
+        # Delegate all business logic to service layer
+        logger.info(f"[ROUTER] Processing document: {file.filename}")
+        num_chunks = await process_document(pdf_path, document_id, pdf_hash)
+        
     finally:
+        # Clean up temporary file
         try:
             pdf_path.unlink()
         except FileNotFoundError:
             pass
 
+    # Validate result
     if num_chunks == 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
