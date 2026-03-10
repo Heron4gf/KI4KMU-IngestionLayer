@@ -27,16 +27,26 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 
 ### Vector Database Configuration
 
-The system utilizes **two separate vector spaces** in ChromaDB for optimal performance and precision:
+The system utilizes a **unified vector space** in ChromaDB for both text and image embeddings:
 
-| Vector Space | Embedding Model | Purpose |
+| Content Type | Embedding Model | Purpose |
 |--------------|-----------------|---------|
-| **Images** | [SigLip 2](https://huggingface.co/blog/siglip2) | Image embeddings for visual content analysis |
 | **Text** | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-4b) | Text embeddings for semantic search |
+| **Images** | [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) | Image description embeddings via local inference |
 
-This dual-space architecture provides:
-- **Scalability**: Independent scaling of image and text processing pipelines
-- **Precision**: Specialized embedding models optimized for their respective content types, ensuring the highest accuracy for each modality
+### Image Embedding Process
+
+Images are processed using the following pipeline:
+
+1. **Image Description**: Images are described using the [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) model from Hugging Face
+2. **Local Inference**: The model is loaded via [LM Studio](https://lmstudio.ai/) which creates a Local Server with access to the local network
+3. **Unified Embedding**: Image descriptions are embedded in the same vector space as text content
+4. **Base64 Storage**: The original image is saved as base64-encoded data alongside its embedding
+
+This unified architecture provides:
+- **Simplicity**: Single vector space for all content types
+- **Semantic Consistency**: Image descriptions and text share the same embedding space for coherent search results
+- **Local Processing**: Image descriptions are generated locally via LM Studio, ensuring data privacy
 
 ## Prerequisites
 
