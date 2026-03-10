@@ -5,17 +5,19 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8001"
+    env_file:
+      - .env
     environment:
-      CHROMA_HOST: chromadb
-      CHROMA_PORT: "8000"
-      CHROMA_COLLECTION: documents
-      UNSTRUCTURED_URL: http://unstructured:8000/general/v0/general
-      UNSTRUCTURED_CHUNKING_STRATEGY: by_title
-      UNSTRUCTURED_MAX_CHARACTERS: "1000"
-      UNSTRUCTURED_OVERLAP: "150"
-      LMSTUDIO_URL: http://10.175.26.122:1234/v1
-      LMSTUDIO_MODEL: qwen3.5-0.8b:3
-      CAPTION_MAX_TOKENS: "256"
+      - CHROMA_HOST=${CHROMA_HOST}
+      - CHROMA_PORT=${CHROMA_PORT}
+      - CHROMA_COLLECTION=${CHROMA_COLLECTION}
+      - UNSTRUCTURED_URL=${UNSTRUCTURED_URL}
+      - UNSTRUCTURED_CHUNKING_STRATEGY=${UNSTRUCTURED_CHUNKING_STRATEGY}
+      - UNSTRUCTURED_MAX_CHARACTERS=${UNSTRUCTURED_MAX_CHARACTERS}
+      - UNSTRUCTURED_OVERLAP=${UNSTRUCTURED_OVERLAP}
+      - LMSTUDIO_URL=${LMSTUDIO_URL}
+      - LMSTUDIO_MODEL=${LMSTUDIO_MODEL}
+      - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS}
     depends_on:
       - chromadb
       - unstructured
