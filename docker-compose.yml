@@ -18,6 +18,9 @@ services:
       - LMSTUDIO_URL=${LMSTUDIO_URL}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL}
       - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS}
+      - DESCRIBE_IMAGE_PROMPT_PATH=${DESCRIBE_IMAGE_PROMPT_PATH}
+    volumes:
+      - ./prompts/describe_image.md:/app/prompts/describe_image.md:ro
     depends_on:
       - chromadb
       - unstructured
@@ -66,6 +69,23 @@ services:
     networks:
       - backend
 
+  langextract:
+    build: ./langextract-service
+    container_name: langextract
+    restart: unless-stopped
+    ports:
+      - "${LANGEXTRACT_PORT}:8003"
+    env_file:
+      - .env
+    environment:
+      - LANGEXTRACT_BASE_URL=${LANGEXTRACT_BASE_URL}
+      - LANGEXTRACT_API_KEY=${LANGEXTRACT_API_KEY}
+      - LANGEXTRACT_MODEL_ID=${LANGEXTRACT_MODEL_ID}
+      - LANGEXTRACT_PROMPT_PATH=${LANGEXTRACT_PROMPT_PATH}
+    volumes:
+      - ./prompts:/prompts:ro
+    networks:
+      - backend
 
 networks:
   backend:

@@ -1,0 +1,1 @@
+Describe this image in detail. If it contains charts, tables, or diagrams, explain what they show.

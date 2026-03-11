@@ -17,7 +17,7 @@ from typing import Any
 from PIL import Image
 from openai import OpenAI
 
-from utils import image_to_b64
+from utils import image_to_b64, read_file
 
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class Captioner:
                         },
                         {
                             "type": "text",
-                            "text": "Describe this image in detail. If it contains charts, tables, or diagrams, explain what they show.",
+                            "text": read_file("prompts/describe_image.md"),
                         },
                     ],
                 }

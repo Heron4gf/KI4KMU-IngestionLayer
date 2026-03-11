@@ -15,6 +15,10 @@ def cast_to_str(value: Optional[Any]) -> Optional[str]:
     return str(value)
 
 
+def read_file(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
 def sanitize_metadata(raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
