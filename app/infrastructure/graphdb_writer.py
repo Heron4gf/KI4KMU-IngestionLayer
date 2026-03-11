@@ -2,22 +2,12 @@ import os
 import logging
 from urllib.parse import quote
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, DIGEST
+from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES
+
 
 logger = logging.getLogger(__name__)
 
-# ── Namespaces ────────────────────────────────────────────────────────────────
-BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://pdf-ingestion/ontology/")
-GRAPHDB_URL = os.getenv("GRAPHDB_URL", "http://graphdb:7200")
-GRAPHDB_REPO= os.getenv("GRAPHDB_REPOSITORY", "pdf-ingestion")
 
-PREFIXES = f"""
-PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-PREFIX pi:   <{BASE_NS}>
-"""
-
-# ── Client ────────────────────────────────────────────────────────────────────
 def _get_sparql_client() -> SPARQLWrapper:
     endpoint = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}/statements"
     sparql = SPARQLWrapper(endpoint)
@@ -38,8 +28,6 @@ def _run_update(query: str) -> None:
     sparql.setQuery(query)
     sparql.query()
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 def _uri(local: str) -> str:
     """Builds a full URI in the base namespace."""
     return f"pi:{quote(local, safe='')}"
@@ -57,8 +45,6 @@ def _literal(value) -> str:
     escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
 
-
-# ── Public API ────────────────────────────────────────────────────────────────
 def insert_chunk(chunk_id: str, metadata: dict) -> None:
     """
     Inserts a Chunk node into GraphDB with all key-value metadata as datatype properties.

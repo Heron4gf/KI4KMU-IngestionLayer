@@ -88,7 +88,6 @@ dmypy.json
 
 # macOS
 .DS_Store
-models/
 
 # Windows
 Thumbs.db
@@ -98,6 +97,7 @@ Desktop.ini
 # Project specific
 # ChromaDB data
 chroma-data/
+./graphdb-data/
 
 # Uploaded files
 uploads/

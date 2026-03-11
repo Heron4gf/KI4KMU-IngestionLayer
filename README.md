@@ -22,7 +22,7 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 - **Docker Support**: Full Docker and Docker Compose support for easy deployment
 
 ## Architecture
-![Architecture](./image.png)
+![Architecture](./ingestion_layer_structure.png)
 
 ### Vector Database Configuration
 

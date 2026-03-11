@@ -18,9 +18,9 @@ services:
       - LMSTUDIO_URL=${LMSTUDIO_URL}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL}
       - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS}
-      - DESCRIBE_IMAGE_PROMPT_PATH=${DESCRIBE_IMAGE_PROMPT_PATH}
+      - CAPTIONER_PROMPT_PATH=${CAPTIONER_PROMPT_PATH}
     volumes:
-      - ./prompts/describe_image.md:/app/prompts/describe_image.md:ro
+      - ./prompts/captioner.md:/app/prompts/captioner.md:ro
     depends_on:
       - chromadb
       - unstructured
