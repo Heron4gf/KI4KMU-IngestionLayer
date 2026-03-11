@@ -21,8 +21,10 @@ services:
     depends_on:
       - chromadb
       - unstructured
+      - graphdb
     networks:
       - backend
+
 
   chromadb:
     image: chromadb/chroma:latest
@@ -35,6 +37,7 @@ services:
     networks:
       - backend
 
+
   unstructured:
     image: robwilkes/unstructured-api:latest
     container_name: unstructured
@@ -43,6 +46,26 @@ services:
       - "8002:8000"
     networks:
       - backend
+
+
+  graphdb:
+    image: ontotext/graphdb:${GRAPHDB_VERSION}
+    container_name: graphdb
+    restart: unless-stopped
+    ports:
+      - "${GRAPHDB_PORT}:7200"
+    volumes:
+      - ./graphdb-data:/opt/graphdb/home
+    environment:
+      - GDB_JAVA_OPTS=${GDB_JAVA_OPTS}
+      - GRAPHDB_URL=${GRAPHDB_URL}
+      - GRAPHDB_REPOSITORY=${GRAPHDB_REPOSITORY}
+      - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS}
+      - GRAPHDB_USER=${GRAPHDB_USER}
+      - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD}
+    networks:
+      - backend
+
 
 networks:
   backend:
