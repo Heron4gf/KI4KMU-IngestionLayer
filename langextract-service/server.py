@@ -11,13 +11,11 @@ from langextract import factory
 
 logger = logging.getLogger(__name__)
 
-# ── Config from env ───────────────────────────────────────────────────────────
-BASE_URL    = os.environ["LANGEXTRACT_BASE_URL"]      # es. http://lmstudio:1234/v1
-API_KEY     = os.getenv("LANGEXTRACT_API_KEY", "lm-studio")
-MODEL_ID    = os.environ["LANGEXTRACT_MODEL_ID"]      # es. openai/gpt-4o
-PROMPT_PATH = os.environ["LANGEXTRACT_PROMPT_PATH"]   # es. /prompts/extract.txt
+BASE_URL = os.environ["LANGEXTRACT_BASE_URL"]
+API_KEY = os.getenv("LANGEXTRACT_API_KEY", "lm-studio")
+MODEL_ID = os.environ["LANGEXTRACT_MODEL_ID"]
+PROMPT_PATH = os.environ["LANGEXTRACT_PROMPT_PATH"]
 
-# Disabilita chunking: passa l'intero testo in un unico "chunk"
 MAX_CHAR_BUFFER = 10000000
 
 
@@ -30,7 +28,6 @@ def _load_prompt() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Eager check at startup
     _load_prompt()
     logger.info("LangExtract service ready — model=%s base_url=%s", MODEL_ID, BASE_URL)
     yield
@@ -39,17 +36,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="LangExtract Service", lifespan=lifespan)
 
 
-# ── Request / Response ────────────────────────────────────────────────────────
 class ExtractRequest(BaseModel):
     text: str
-    examples: list[dict] = []          # opzionale: lista di ExampleData serializzati
+    examples: list[dict] = []
 
 
 class ExtractResponse(BaseModel):
     extractions: list[dict]
 
 
-# ── Endpoint ──────────────────────────────────────────────────────────────────
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest):
     prompt = _load_prompt()
@@ -68,7 +63,7 @@ def extract(req: ExtractRequest):
             prompt_description=prompt,
             examples=req.examples or _default_examples(),
             config=config,
-            max_char_buffer=MAX_CHAR_BUFFER,   # chunking interno disattivato
+            max_char_buffer=MAX_CHAR_BUFFER,
             show_progress=False,
         )
     except Exception as e:
@@ -88,12 +83,57 @@ def health():
 
 
 def _default_examples():
-    # Placeholder: senza esempi langextract solleva ValueError.
-    # Sostituisci con i tuoi ExampleData reali, oppure accettali via API.
-    from langextract.core.data import ExampleData, Extraction
+    from langextract.core.data import ExampleData
+
     return [
         ExampleData(
-            text="Apple Inc. was founded by Steve Jobs.",
-            extractions=[Extraction(name="Steve Jobs", label="PERSON")],
+            text=(
+                "Der Data Scientist konzipiert ML-Modelle. "
+                "Microsoft Copilot ist in Microsoft 365 integriert. "
+                "Der AI Act der EU reguliert KI-Systeme nach Risikoniveau. "
+                "Ohne Datenkompetenz keine KI-Kompetenz."
+            ),
+            extractions=[
+                lx.data.Extraction(
+                    extraction_class="rolle",
+                    extraction_text="Data Scientist",
+                    attributes={
+                        "verantwortung": "Konzeption von ML-Modellen",
+                        "bereich": "Machine Learning"
+                    }
+                ),
+                lx.data.Extraction(
+                    extraction_class="tool",
+                    extraction_text="Microsoft Copilot",
+                    attributes={
+                        "anbieter": "Microsoft",
+                        "einsatzbereich": "Tägliche Büroarbeit"
+                    }
+                ),
+                lx.data.Extraction(
+                    extraction_class="rahmenwerk",
+                    extraction_text="AI Act",
+                    attributes={
+                        "herausgeber": "EU",
+                        "zweck": "Regulierung von KI-Systemen"
+                    }
+                ),
+                lx.data.Extraction(
+                    extraction_class="konzept",
+                    extraction_text="Datenkompetenz",
+                    attributes={
+                        "relevanz": "Grundvoraussetzung für KI-Kompetenz"
+                    }
+                ),
+                lx.data.Extraction(
+                    extraction_class="beziehung",
+                    extraction_text="konzipiert ML-Modelle",
+                    attributes={
+                        "typ": "konzipiert",
+                        "subjekt": "Data Scientist",
+                        "objekt": "ML-Modelle"
+                    }
+                ),
+            ]
         )
     ]

@@ -97,7 +97,7 @@ Desktop.ini
 # Project specific
 # ChromaDB data
 chroma-data/
-./graphdb-data/
+graphdb-data/
 
 # Uploaded files
 uploads/
