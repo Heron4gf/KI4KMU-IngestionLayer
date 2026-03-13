@@ -19,6 +19,12 @@ services:
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL}
       - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS}
       - CAPTIONER_PROMPT_PATH=${CAPTIONER_PROMPT_PATH}
+      - LANGEXTRACT_URL=http://langextract:8003
+      - GRAPHDB_URL=${GRAPHDB_URL}
+      - GRAPHDB_REPOSITORY=${GRAPHDB_REPOSITORY}
+      - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS}
+      - GRAPHDB_USER=${GRAPHDB_USER}
+      - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD}
     volumes:
       - ./prompts/captioner.md:/app/prompts/captioner.md:ro
     depends_on:

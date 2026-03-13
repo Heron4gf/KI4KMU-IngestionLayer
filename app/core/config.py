@@ -33,3 +33,5 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 PREFIX pi:   <{BASE_NS}>
 """
+
+LANGEXTRACT_URL = os.getenv("LANGEXTRACT_URL", "http://langextract:8003")
