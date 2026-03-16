@@ -21,6 +21,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+graphdb-data/
+chroma-data/
 
 # IDEs
 .idea/

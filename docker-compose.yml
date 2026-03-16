@@ -18,11 +18,22 @@ services:
       - LMSTUDIO_URL=${LMSTUDIO_URL}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL}
       - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS}
+      - CAPTIONER_PROMPT_PATH=${CAPTIONER_PROMPT_PATH}
+      - LANGEXTRACT_URL=http://langextract:8003
+      - GRAPHDB_URL=${GRAPHDB_URL}
+      - GRAPHDB_REPOSITORY=${GRAPHDB_REPOSITORY}
+      - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS}
+      - GRAPHDB_USER=${GRAPHDB_USER}
+      - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD}
+    volumes:
+      - ./prompts/captioner.md:/app/prompts/captioner.md:ro
     depends_on:
       - chromadb
       - unstructured
+      - graphdb
     networks:
       - backend
+
 
   chromadb:
     image: chromadb/chroma:latest
@@ -35,12 +46,50 @@ services:
     networks:
       - backend
 
+
   unstructured:
     image: robwilkes/unstructured-api:latest
     container_name: unstructured
     restart: unless-stopped
     ports:
       - "8002:8000"
+    networks:
+      - backend
+
+
+  graphdb:
+    image: ontotext/graphdb:${GRAPHDB_VERSION}
+    container_name: graphdb
+    restart: unless-stopped
+    ports:
+      - "${GRAPHDB_PORT}:7200"
+    volumes:
+      - ./graphdb-data:/opt/graphdb/home
+    environment:
+      - GDB_JAVA_OPTS=${GDB_JAVA_OPTS}
+      - GRAPHDB_URL=${GRAPHDB_URL}
+      - GRAPHDB_REPOSITORY=${GRAPHDB_REPOSITORY}
+      - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS}
+      - GRAPHDB_USER=${GRAPHDB_USER}
+      - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD}
+    networks:
+      - backend
+
+  langextract:
+    build: ./langextract-service
+    container_name: langextract
+    restart: unless-stopped
+    ports:
+      - "${LANGEXTRACT_PORT}:8003"
+    env_file:
+      - .env
+    environment:
+      - LANGEXTRACT_BASE_URL=${LANGEXTRACT_BASE_URL}
+      - LANGEXTRACT_API_KEY=${LANGEXTRACT_API_KEY}
+      - LANGEXTRACT_MODEL_ID=${LANGEXTRACT_MODEL_ID}
+      - LANGEXTRACT_PROMPT_PATH=${LANGEXTRACT_PROMPT_PATH}
+    volumes:
+      - ./prompts:/prompts:ro
     networks:
       - backend
 
