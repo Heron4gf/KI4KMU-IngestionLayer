@@ -10,11 +10,21 @@ from app.infrastructure.chroma_repository import (
     document_already_ingested,
     store_chunks_in_chroma,
 )
-from app.infrastructure.graphdb_writer import insert_chunk, insert_entity
+from app.infrastructure.graphdb_writer import (
+    insert_chunk,
+    insert_typed_entity,
+    insert_relationship,
+)
 from app.core.config import LANGEXTRACT_URL
 from app.utils.files import file_md5
 
 logger = logging.getLogger(__name__)
+
+# Metadata keys from Unstructured that are noisy / redundant in GraphDB.
+# - orig_elements: large base64 blob, already stored in Chroma, zero graph value
+# - languages:     document-level info, not useful per-chunk
+# - filetype:      always application/pdf in this pipeline
+_GRAPHDB_METADATA_BLOCKLIST = {"orig_elements", "languages", "filetype"}
 
 
 async def _extract_entities(client: httpx.AsyncClient, text: str) -> list[dict]:
@@ -30,24 +40,37 @@ async def _extract_entities(client: httpx.AsyncClient, text: str) -> list[dict]:
         return []
 
 
-async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict, document_id: str):
+async def _process_single_chunk(
+    client: httpx.AsyncClient,
+    i: int,
+    element: dict,
+    document_id: str,
+):
     chunk_id = f"{document_id}_chunk_{i}"
     text = element.get("text", "")
-    metadata = {
+
+    raw_metadata = {
         **element.get("metadata", {}),
         "document_id": document_id,
         "chunk_index": i,
         "text": text,
     }
+    # Strip noisy fields before writing to GraphDB
+    metadata = {
+        k: v for k, v in raw_metadata.items()
+        if k not in _GRAPHDB_METADATA_BLOCKLIST
+    }
 
     await asyncio.to_thread(insert_chunk, chunk_id, metadata)
-    
+
     extractions = await _extract_entities(client, text)
 
     for extraction in extractions:
-        entity_label = extraction.get("extraction_text", "").strip()
-        if entity_label:
-            await asyncio.to_thread(insert_entity, entity_label, chunk_id)
+        cls = extraction.get("extraction_class", "").strip().lower()
+        if cls == "beziehung":
+            await asyncio.to_thread(insert_relationship, extraction, chunk_id)
+        else:
+            await asyncio.to_thread(insert_typed_entity, extraction, chunk_id)
 
 
 async def process_document(pdf_path: Path, document_id: str) -> int:

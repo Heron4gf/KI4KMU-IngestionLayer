@@ -24,6 +24,33 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 ## Architecture
 ![Architecture](./ingestion_layer_structure.png)
 
+## Graph Database Integration
+The system includes a GraphDB integration that stores extracted entities and their relationships. The graph database provides structured knowledge representation alongside the vector database for semantic search.
+
+### Graph Database Schema
+The system uses a custom ontology defined in `ontology/ki_kmu_schema.yaml` that includes:
+
+- **Entity Types**: Organizations, People, Locations, Technologies, Projects, etc.
+- **Relationships**: Mentions, collaborations, affiliations, and other semantic connections
+- **Attributes**: Entity properties and metadata
+
+### Example Graph Result
+Here's an example of the graph structure generated from document processing:
+
+![Example Graph Result](./example_graph_result.png)
+
+The graph visualization shows:
+- **Nodes**: Extracted entities (colored by type)
+- **Edges**: Relationships between entities
+- **Labels**: Entity names and types
+- **Attributes**: Additional metadata about entities and relationships
+
+This structured representation enables:
+- Complex relationship queries
+- Knowledge graph exploration
+- Entity-centric analysis
+- Cross-document entity linking
+
 ### Vector Database Configuration
 
 The system utilizes a **unified vector space** in ChromaDB for both text and image embeddings:

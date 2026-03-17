@@ -1,0 +1,217 @@
+id: https://ki-zentrum.ch/ontology/ki-kmu
+name: KI4KMU
+description: >-
+  Ontology for the KI-4-KMU methodology — captures AI adoption concepts,
+  methods, tools, use-cases, organisations and their relationships as defined
+  in the FHNW KI-4-KMU Praxisleitfaden.
+
+prefixes:
+  linkml:  https://w3id.org/linkml/
+  ki:      https://ki-zentrum.ch/ontology/ki-kmu/
+  rdf:     http://www.w3.org/1999/02/22-rdf-syntax-ns#
+  rdfs:    http://www.w3.org/2000/01/rdf-schema#
+  xsd:     http://www.w3.org/2001/XMLSchema#
+  owl:     http://www.w3.org/2002/07/owl#
+
+default_prefix: ki
+default_range: string
+
+imports:
+  - linkml:types
+
+# ---------------------------------------------------------------------------
+# Enumerations
+# ---------------------------------------------------------------------------
+enums:
+
+  ImpactLevel:
+    description: Relative impact or feasibility level
+    permissible_values:
+      low:
+      medium:
+      high:
+
+  BeziehungsTyp:
+    description: Typed directed relationship between two entities
+    permissible_values:
+      besteht_aus:
+        description: A method/phase consists of sub-elements
+      verwendet:
+        description: An actor or phase uses a tool or technology
+      hat_use_case:
+        description: An organisation has an identified AI use-case
+      optimiert:
+        description: A use-case optimises a process
+      nutzt:
+        description: A use-case leverages an AI technology
+      teilnimmt_an:
+        description: An organisation or person participates in a workshop
+      ist_vorlaeufer_von:
+        description: Temporal/sequential predecessor relationship (e.g. phase order)
+      reguliert:
+        description: A framework regulates a technology or practice
+      erfordert:
+        description: Something requires a prerequisite
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+classes:
+
+  # --- Root abstract class -------------------------------------------------
+  Entitaet:
+    abstract: true
+    description: Abstract root for all named entities extracted from documents
+    attributes:
+      id:
+        identifier: true
+        required: true
+        description: Unique slug identifier (snake_case, derived from extraction_text)
+        range: string
+      extraction_text:
+        required: true
+        description: Verbatim text span from the source document
+        range: string
+      quelle_chunk_id:
+        description: ID of the document chunk this entity was extracted from
+        range: string
+
+  # --- Concrete entity classes ---------------------------------------------
+  Organisation:
+    is_a: Entitaet
+    description: A company, university, public body or consortium (e.g. FHNW, KMU, Swisscom)
+    attributes:
+      branche:
+        description: Industry sector (e.g. IT, Gesundheit, Beratung)
+      groesse:
+        description: Organisation size category (KMU, Grossunternehmen, Hochschule)
+      rolle_im_projekt:
+        description: Role in the KI-4-KMU project (Wirtschaftspartner, Forschungspartner, Fallstudie)
+
+  Methode:
+    is_a: Entitaet
+    description: A structured methodology or framework (e.g. KI-4-KMU-Methode, Design Thinking)
+    attributes:
+      zielgruppe:
+        description: Target audience (e.g. KMU, Führungskräfte)
+      anzahl_phasen:
+        range: integer
+
+  Phase:
+    is_a: Entitaet
+    description: A named phase within a methodology (Design, Build, Run)
+    attributes:
+      sequenz_nummer:
+        range: integer
+        description: Ordered position within the parent method (1, 2, 3)
+      ziel:
+        description: Primary objective of this phase
+      zugehoerige_methode:
+        range: string
+        description: ID of the parent Methode
+
+  Iteration:
+    is_a: Entitaet
+    description: A sub-level iteration within a phase (Unternehmensebene, Prozessebene, Aufgabenebene)
+    attributes:
+      ebene:
+        description: Analysis level (unternehmen, prozess, aufgabe)
+      zugehoerige_phase:
+        range: string
+
+  Tool:
+    is_a: Entitaet
+    description: A concrete workshop instrument or canvas (Business Model Canvas, Portfolio-Matrix)
+    attributes:
+      anbieter:
+        description: Creator or publisher of the tool
+      einsatzbereich:
+        description: Intended use context (Strategie, Prozess, Evaluation)
+      iteration:
+        description: ID of the Iteration this tool is used in
+
+  UseCase:
+    is_a: Entitaet
+    description: A concrete AI application scenario identified for an organisation
+    attributes:
+      impact:
+        range: ImpactLevel
+        description: Expected business impact
+      machbarkeit:
+        range: ImpactLevel
+        description: Technical and organisational feasibility
+      daten_vorhanden:
+        range: boolean
+        description: Whether required data is already available
+      entwicklungstyp:
+        description: Agile dev type (PoC, Prototype, Pilot, MVP)
+
+  Technologie:
+    is_a: Entitaet
+    description: An AI or digital technology category (Machine Learning, NLP, Computer Vision)
+    attributes:
+      unterkategorie:
+        description: Specific sub-type (Supervised Learning, Transformer, etc.)
+      reifegrad:
+        description: Maturity level (experimentell, produktionsreif)
+
+  Konzept:
+    is_a: Entitaet
+    description: An abstract domain concept or term (Datenkompetenz, Wertschöpfungskette)
+    attributes:
+      definition:
+        description: Short definition or explanation from the document
+      bereich:
+        description: Domain area (Strategie, Ethik, Prozessmanagement)
+
+  Rolle:
+    is_a: Entitaet
+    description: A person, job function or actor (Data Scientist, Geschäftsführer)
+    attributes:
+      verantwortung:
+        description: Key responsibilities
+      organisation:
+        description: ID of the associated Organisation
+
+  Rahmenwerk:
+    is_a: Entitaet
+    description: A regulatory or normative framework (EU AI Act, ISO 42001)
+    attributes:
+      herausgeber:
+        description: Issuing body (EU, ISO, NIST)
+      zweck:
+        description: Purpose or scope of the framework
+      geltungsbereich:
+        description: Applicability scope (Europa, International)
+
+  Workshop:
+    is_a: Entitaet
+    description: A structured workshop event (Pilotworkshop, Validierungsworkshop)
+    attributes:
+      datum:
+        description: Date of the workshop (ISO 8601)
+      ort:
+        description: Location (e.g. Olten, FHNW)
+      workshop_typ:
+        description: Type (Pilot, Validierung, KMU-Validierung)
+
+  # --- Relationship reification -------------------------------------------
+  Beziehung:
+    description: >-
+      A typed directed relationship between two entities. Reified so it can
+      carry attributes and be stored as a node in GraphDB.
+    attributes:
+      typ:
+        required: true
+        range: BeziehungsTyp
+      subjekt_id:
+        required: true
+        description: ID of the source entity
+        range: string
+      objekt_id:
+        required: true
+        description: ID of the target entity
+        range: string
+      kontext:
+        description: Optional verbatim context sentence from the source text
+        range: string
