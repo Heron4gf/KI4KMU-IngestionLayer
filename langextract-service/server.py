@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import logging
 from pathlib import Path
@@ -10,10 +11,10 @@ import langextract as lx
 
 logger = logging.getLogger(__name__)
 
-API_KEY  = os.environ["LANGEXTRACT_API_KEY"]
-MODEL_ID = os.environ["LANGEXTRACT_MODEL_ID"]
+API_KEY   = os.environ["LANGEXTRACT_API_KEY"]
+MODEL_ID  = os.environ["LANGEXTRACT_MODEL_ID"]
 PROMPT_PATH = os.environ["LANGEXTRACT_PROMPT_PATH"]
-BASE_URL = os.environ.get("LANGEXTRACT_BASE_URL")
+BASE_URL  = os.environ.get("LANGEXTRACT_BASE_URL")   # optional — None for real OpenAI
 
 MAX_CHAR_BUFFER = 10_000_000
 
@@ -65,9 +66,17 @@ def extract(req: ExtractRequest):
         logger.error("Extraction failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+    # lx.extract() returns a single AnnotatedDocument when input is a string,
+    # or a list when input is an iterable of Documents.
     docs = result if isinstance(result, list) else [result]
+
+    # AnnotatedDocument.extractions holds the list of Extraction dataclasses.
+    # dataclasses.asdict() is used instead of __dict__ to correctly serialize
+    # nested dataclasses and exclude private fields like _token_interval.
     extractions = [
-        ann.__dict__ for doc in docs for ann in (doc.annotations or [])
+        dataclasses.asdict(ann)
+        for doc in docs
+        for ann in (doc.extractions or [])
     ]
     return ExtractResponse(extractions=extractions)
 
@@ -101,7 +110,7 @@ def _default_examples():
                     extraction_text="Microsoft Copilot",
                     attributes={
                         "anbieter": "Microsoft",
-                        "einsatzbereich": "Tägliche Büroarbeit",
+                        "einsatzbereich": "T\u00e4gliche B\u00fcroarbeit",
                     }
                 ),
                 lx.data.Extraction(
@@ -116,7 +125,7 @@ def _default_examples():
                     extraction_class="konzept",
                     extraction_text="Datenkompetenz",
                     attributes={
-                        "definition": "Grundvoraussetzung für KI-Kompetenz",
+                        "definition": "Grundvoraussetzung f\u00fcr KI-Kompetenz",
                     }
                 ),
             ]
