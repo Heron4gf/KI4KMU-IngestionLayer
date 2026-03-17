@@ -9,12 +9,16 @@ from pydantic import BaseModel
 
 import langextract as lx
 
+from dotenv import load_dotenv
+load_dotenv()
+
+
 logger = logging.getLogger(__name__)
 
 API_KEY   = os.environ["LANGEXTRACT_API_KEY"]
 MODEL_ID  = os.environ["LANGEXTRACT_MODEL_ID"]
 PROMPT_PATH = os.environ["LANGEXTRACT_PROMPT_PATH"]
-BASE_URL  = os.environ.get("LANGEXTRACT_BASE_URL")   # optional — None for real OpenAI
+BASE_URL  = os.environ.get("LANGEXTRACT_BASE_URL") 
 
 MAX_CHAR_BUFFER = 10_000_000
 
@@ -56,7 +60,7 @@ def extract(req: ExtractRequest):
             examples=req.examples or _default_examples(),
             model_id=MODEL_ID,
             api_key=API_KEY,
-            model_url=BASE_URL,
+            #model_url=BASE_URL,
             max_char_buffer=MAX_CHAR_BUFFER,
             show_progress=False,
             fence_output=True,
