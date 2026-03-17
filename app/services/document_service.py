@@ -20,6 +20,12 @@ from app.utils.files import file_md5
 
 logger = logging.getLogger(__name__)
 
+# Metadata keys from Unstructured that are noisy / redundant in GraphDB.
+# - orig_elements: large base64 blob, already stored in Chroma, zero graph value
+# - languages:     document-level info, not useful per-chunk
+# - filetype:      always application/pdf in this pipeline
+_GRAPHDB_METADATA_BLOCKLIST = {"orig_elements", "languages", "filetype"}
+
 
 async def _extract_entities(client: httpx.AsyncClient, text: str) -> list[dict]:
     try:
@@ -42,11 +48,17 @@ async def _process_single_chunk(
 ):
     chunk_id = f"{document_id}_chunk_{i}"
     text = element.get("text", "")
-    metadata = {
+
+    raw_metadata = {
         **element.get("metadata", {}),
         "document_id": document_id,
         "chunk_index": i,
         "text": text,
+    }
+    # Strip noisy fields before writing to GraphDB
+    metadata = {
+        k: v for k, v in raw_metadata.items()
+        if k not in _GRAPHDB_METADATA_BLOCKLIST
     }
 
     await asyncio.to_thread(insert_chunk, chunk_id, metadata)
