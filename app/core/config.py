@@ -23,6 +23,8 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
 
+HF_TOKEN = os.getenv("HF_TOKEN")
+
 BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://pdf-ingestion/ontology/")
 GRAPHDB_URL = os.getenv("GRAPHDB_URL", "http://graphdb:7200")
 GRAPHDB_REPO= os.getenv("GRAPHDB_REPOSITORY", "pdf-ingestion")

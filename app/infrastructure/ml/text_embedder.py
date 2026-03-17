@@ -1,9 +1,12 @@
+import logging
 from typing import List
 
 import torch
 from sentence_transformers import SentenceTransformer
 
-from app.core.config import TEXT_MODEL
+from app.core.config import TEXT_MODEL, HF_TOKEN
+
+logger = logging.getLogger(__name__)
 
 
 class TextEmbedder:
@@ -14,7 +17,12 @@ class TextEmbedder:
     It does not handle any image processing or ML inference beyond embeddings.
     """
     def __init__(self, model_id: str = TEXT_MODEL):
-        self._model = SentenceTransformer(model_id, trust_remote_code=True)
+        if HF_TOKEN:
+            logger.info(f"Using HF_TOKEN for model download: {model_id}")
+            self._model = SentenceTransformer(model_id, trust_remote_code=True, token=HF_TOKEN)
+        else:
+            logger.info(f"Downloading model without HF_TOKEN: {model_id}")
+            self._model = SentenceTransformer(model_id, trust_remote_code=True)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model.to(self._device)
 
