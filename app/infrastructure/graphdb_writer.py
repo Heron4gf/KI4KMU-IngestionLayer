@@ -1,16 +1,7 @@
-"""GraphDB writer — typed SPARQL INSERT statements driven by the KI-4-KMU ontology.
-
-Entity types and relationship types are read directly from the LinkML schema
-(ontology/ki_kmu_schema.yaml) so this file never needs to be edited when the
-ontology changes — only the schema needs updating.
-
-Usage (called from document_service.py):
-    insert_chunk(chunk_id, metadata)
-    insert_typed_entity(extraction)      # replaces old insert_entity()
-    insert_relationship(extraction)      # new — writes a Beziehung triple
-"""
 import os
+import re
 import logging
+import unicodedata
 from urllib.parse import quote
 from pathlib import Path
 
@@ -20,13 +11,12 @@ from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Load valid entity / relationship types from the LinkML schema at import time
-# ---------------------------------------------------------------------------
 _SCHEMA_PATH = Path(__file__).parent.parent.parent / "ontology" / "ki_kmu_schema.yaml"
 
+_ACRONYMS = {"kmu", "fhnw", "ki", "nlp", "ml", "ai", "eu", "erp", "crm", "iot", "api", "kpi"}
+
+
 def _load_valid_types() -> tuple[set[str], set[str]]:
-    """Return (valid_entity_classes, valid_relationship_types) from the schema."""
     try:
         with open(_SCHEMA_PATH, encoding="utf-8") as f:
             schema = yaml.safe_load(f)
@@ -46,11 +36,19 @@ def _load_valid_types() -> tuple[set[str], set[str]]:
         logger.warning("Schema not found at %s — type validation disabled", _SCHEMA_PATH)
         return set(), set()
 
+
 VALID_ENTITY_CLASSES, VALID_REL_TYPES = _load_valid_types()
 
-# ---------------------------------------------------------------------------
-# SPARQL helpers
-# ---------------------------------------------------------------------------
+
+def _canonical_id(raw: str) -> str:
+    nfd = unicodedata.normalize("NFD", raw)
+    ascii_str = nfd.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^\w]+", "_", ascii_str.lower()).strip("_")
+    slug = re.sub(r"_+", "_", slug)
+    if slug in _ACRONYMS:
+        return slug.upper()
+    return slug
+
 
 def _get_sparql_client() -> SPARQLWrapper:
     endpoint = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}/statements"
@@ -87,19 +85,11 @@ def _literal(value) -> str:
 
 
 def _class_uri(class_name: str) -> str:
-    """Map an extraction_class string to a full ontology class URI."""
     label = class_name.strip().capitalize()
     return f"<{BASE_NS}{label}>"
 
 
-# ---------------------------------------------------------------------------
-# Public write functions
-# ---------------------------------------------------------------------------
-
 def insert_chunk(chunk_id: str, metadata: dict) -> None:
-    """
-    Inserts a Chunk node into GraphDB with all key-value metadata as datatype properties.
-    """
     chunk_uri = _uri(chunk_id)
     meta_triples = "\n    ".join(
         f"{chunk_uri} {_uri(k)} {_literal(v)} ."
@@ -123,21 +113,15 @@ INSERT DATA {{
 
 
 def insert_typed_entity(extraction: dict, chunk_id: str) -> None:
-    """
-    Inserts a typed entity node using the ontology class URI.
-    """
     if not extraction:
         return
 
     raw_class = extraction.get("extraction_class", "").strip().lower()
     extraction_text = extraction.get("extraction_text", "").strip()
-
-    # dataclasses.asdict() serialises attributes=None as the key being present
-    # with value None — dict.get(key, default) does NOT fall back to default in
-    # that case, so we must normalise it explicitly.
     attributes = extraction.get("attributes") or {}
 
-    entity_id = attributes.get("id") or extraction_text
+    raw_id = attributes.get("id") or extraction_text
+    entity_id = _canonical_id(raw_id)
 
     if not entity_id or not extraction_text:
         logger.debug("Skipping empty extraction: %s", extraction)
@@ -182,21 +166,17 @@ INSERT DATA {{
 
 
 def insert_relationship(extraction: dict, chunk_id: str) -> None:
-    """
-    Inserts a reified Beziehung node linking two entity URIs.
-    """
     if not extraction:
         return
 
     if extraction.get("extraction_class", "").strip().lower() != "beziehung":
         return
 
-    # Same None-safety as insert_typed_entity
     attrs = extraction.get("attributes") or {}
 
     rel_typ    = attrs.get("typ", "").strip()
-    subjekt_id = attrs.get("subjekt_id", "").strip()
-    objekt_id  = attrs.get("objekt_id", "").strip()
+    subjekt_id = _canonical_id(attrs.get("subjekt_id", "").strip())
+    objekt_id  = _canonical_id(attrs.get("objekt_id", "").strip())
     kontext    = attrs.get("kontext", "")
 
     if not (rel_typ and subjekt_id and objekt_id):
