@@ -82,8 +82,9 @@ def _literal(value) -> str:
         return f'"{value}"^^xsd:integer'
     if isinstance(value, float):
         return f'"{value}"^^xsd:decimal'
-    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+    escaped = str(value).replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+    return f'"""{escaped}"""'
+
 
 
 def _class_uri(class_name: str) -> str:
