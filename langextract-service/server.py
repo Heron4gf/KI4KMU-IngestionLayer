@@ -10,8 +10,7 @@ import langextract as lx
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = os.environ["LANGEXTRACT_BASE_URL"]
-API_KEY  = os.getenv("LANGEXTRACT_API_KEY", "lm-studio")
+API_KEY  = os.environ["LANGEXTRACT_API_KEY"]
 MODEL_ID = os.environ["LANGEXTRACT_MODEL_ID"]
 PROMPT_PATH = os.environ["LANGEXTRACT_PROMPT_PATH"]
 
@@ -28,7 +27,7 @@ def _load_prompt() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _load_prompt()
-    logger.info("LangExtract service ready — model=%s base_url=%s", MODEL_ID, BASE_URL)
+    logger.info("LangExtract service ready — model=%s", MODEL_ID)
     yield
 
 
@@ -55,11 +54,8 @@ def extract(req: ExtractRequest):
             examples=req.examples or _default_examples(),
             model_id=MODEL_ID,
             api_key=API_KEY,
-            base_url=BASE_URL,
             max_char_buffer=MAX_CHAR_BUFFER,
             show_progress=False,
-            # Required for OpenAI-compatible providers:
-            # schema constraints are not supported, fenced output must be used instead.
             fence_output=True,
             use_schema_constraints=False,
         )
