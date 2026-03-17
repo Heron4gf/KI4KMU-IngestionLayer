@@ -10,3 +10,5 @@ pillow
 sentence-transformers
 openai
 SPARQLWrapper
+pyyaml
+linkml

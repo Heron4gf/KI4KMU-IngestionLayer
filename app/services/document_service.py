@@ -10,7 +10,11 @@ from app.infrastructure.chroma_repository import (
     document_already_ingested,
     store_chunks_in_chroma,
 )
-from app.infrastructure.graphdb_writer import insert_chunk, insert_entity
+from app.infrastructure.graphdb_writer import (
+    insert_chunk,
+    insert_typed_entity,
+    insert_relationship,
+)
 from app.core.config import LANGEXTRACT_URL
 from app.utils.files import file_md5
 
@@ -30,7 +34,12 @@ async def _extract_entities(client: httpx.AsyncClient, text: str) -> list[dict]:
         return []
 
 
-async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict, document_id: str):
+async def _process_single_chunk(
+    client: httpx.AsyncClient,
+    i: int,
+    element: dict,
+    document_id: str,
+):
     chunk_id = f"{document_id}_chunk_{i}"
     text = element.get("text", "")
     metadata = {
@@ -41,13 +50,15 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
     }
 
     await asyncio.to_thread(insert_chunk, chunk_id, metadata)
-    
+
     extractions = await _extract_entities(client, text)
 
     for extraction in extractions:
-        entity_label = extraction.get("extraction_text", "").strip()
-        if entity_label:
-            await asyncio.to_thread(insert_entity, entity_label, chunk_id)
+        cls = extraction.get("extraction_class", "").strip().lower()
+        if cls == "beziehung":
+            await asyncio.to_thread(insert_relationship, extraction, chunk_id)
+        else:
+            await asyncio.to_thread(insert_typed_entity, extraction, chunk_id)
 
 
 async def process_document(pdf_path: Path, document_id: str) -> int:
