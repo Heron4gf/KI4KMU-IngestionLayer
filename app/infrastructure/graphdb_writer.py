@@ -86,10 +86,8 @@ def _literal(value) -> str:
     return f'"""{escaped}"""'
 
 
-
 def _class_uri(class_name: str) -> str:
     """Map an extraction_class string to a full ontology class URI."""
-    # CamelCase the class name to match LinkML class identifiers
     label = class_name.strip().capitalize()
     return f"<{BASE_NS}{label}>"
 
@@ -127,29 +125,27 @@ INSERT DATA {{
 def insert_typed_entity(extraction: dict, chunk_id: str) -> None:
     """
     Inserts a typed entity node using the ontology class URI.
-
-    Replaces the old insert_entity() which wrote everything as pi:Entity.
-    The entity's extraction_class is validated against the LinkML schema.
-
-    Triples created:
-        pi:<id>  rdf:type         <ontology:ClassName>
-        pi:<id>  rdfs:label       "<extraction_text>"
-        pi:<id>  pi:mentionedIn   pi:<chunk_id>
-        pi:<id>  pi:<attr_key>    <typed_literal>   (one per attribute)
     """
+    if not extraction:
+        return
+
     raw_class = extraction.get("extraction_class", "").strip().lower()
     extraction_text = extraction.get("extraction_text", "").strip()
-    entity_id = extraction.get("attributes", {}).get("id") or extraction_text
+
+    # dataclasses.asdict() serialises attributes=None as the key being present
+    # with value None — dict.get(key, default) does NOT fall back to default in
+    # that case, so we must normalise it explicitly.
+    attributes = extraction.get("attributes") or {}
+
+    entity_id = attributes.get("id") or extraction_text
 
     if not entity_id or not extraction_text:
         logger.debug("Skipping empty extraction: %s", extraction)
         return
 
-    # Skip relationship extractions — handled by insert_relationship()
     if raw_class == "beziehung":
         return
 
-    # Warn but still store unknown classes (as generic pi:Entity fallback)
     if VALID_ENTITY_CLASSES and raw_class not in VALID_ENTITY_CLASSES:
         logger.warning(
             "Unknown extraction_class '%s' — not in ontology schema. Storing as pi:Entity.",
@@ -162,8 +158,6 @@ def insert_typed_entity(extraction: dict, chunk_id: str) -> None:
     entity_uri = _uri(entity_id)
     chunk_uri  = _uri(chunk_id)
 
-    # Build attribute triples from the 'attributes' dict in the extraction
-    attributes = extraction.get("attributes", {})
     attr_triples = "\n    ".join(
         f"{entity_uri} {_uri(k)} {_literal(v)} ."
         for k, v in attributes.items()
@@ -190,31 +184,20 @@ INSERT DATA {{
 def insert_relationship(extraction: dict, chunk_id: str) -> None:
     """
     Inserts a reified Beziehung node linking two entity URIs.
-
-    Expected extraction format:
-        extraction_class: "beziehung"
-        attributes:
-            typ:        <BeziehungsTyp value>
-            subjekt_id: <id of source entity>
-            objekt_id:  <id of target entity>
-            kontext:    <optional verbatim sentence>
-
-    Triples created:
-        pi:<rel_id>  rdf:type          pi:Beziehung
-        pi:<rel_id>  pi:typ            "<typ>"
-        pi:<rel_id>  pi:subjekt        pi:<subjekt_id>
-        pi:<rel_id>  pi:objekt         pi:<objekt_id>
-        pi:<rel_id>  pi:mentionedIn    pi:<chunk_id>
-        pi:<subjekt_id>  pi:<typ>      pi:<objekt_id>   ← direct shortcut triple
     """
+    if not extraction:
+        return
+
     if extraction.get("extraction_class", "").strip().lower() != "beziehung":
         return
 
-    attrs = extraction.get("attributes", {})
-    rel_typ     = attrs.get("typ", "").strip()
-    subjekt_id  = attrs.get("subjekt_id", "").strip()
-    objekt_id   = attrs.get("objekt_id", "").strip()
-    kontext     = attrs.get("kontext", "")
+    # Same None-safety as insert_typed_entity
+    attrs = extraction.get("attributes") or {}
+
+    rel_typ    = attrs.get("typ", "").strip()
+    subjekt_id = attrs.get("subjekt_id", "").strip()
+    objekt_id  = attrs.get("objekt_id", "").strip()
+    kontext    = attrs.get("kontext", "")
 
     if not (rel_typ and subjekt_id and objekt_id):
         logger.debug("Incomplete beziehung extraction — skipping: %s", attrs)
@@ -223,10 +206,10 @@ def insert_relationship(extraction: dict, chunk_id: str) -> None:
     if VALID_REL_TYPES and rel_typ not in VALID_REL_TYPES:
         logger.warning("Unknown relationship type '%s' — not in ontology schema.", rel_typ)
 
-    rel_id   = f"rel_{subjekt_id}_{rel_typ}_{objekt_id}"
-    rel_uri  = _uri(rel_id)
-    subj_uri = _uri(subjekt_id)
-    obj_uri  = _uri(objekt_id)
+    rel_id    = f"rel_{subjekt_id}_{rel_typ}_{objekt_id}"
+    rel_uri   = _uri(rel_id)
+    subj_uri  = _uri(subjekt_id)
+    obj_uri   = _uri(objekt_id)
     chunk_uri = _uri(chunk_id)
 
     kontext_triple = (
