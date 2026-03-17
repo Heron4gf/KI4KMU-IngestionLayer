@@ -15,10 +15,10 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-API_KEY   = os.environ["LANGEXTRACT_API_KEY"]
-MODEL_ID  = os.environ["LANGEXTRACT_MODEL_ID"]
+API_KEY     = os.environ["LANGEXTRACT_API_KEY"]
+MODEL_ID    = os.environ["LANGEXTRACT_MODEL_ID"]
 PROMPT_PATH = os.environ["LANGEXTRACT_PROMPT_PATH"]
-BASE_URL  = os.environ.get("LANGEXTRACT_BASE_URL") 
+BASE_URL    = os.environ.get("LANGEXTRACT_BASE_URL")
 
 MAX_CHAR_BUFFER = 10_000_000
 
@@ -33,7 +33,7 @@ def _load_prompt() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _load_prompt()
-    logger.info("LangExtract service ready — model=%s", MODEL_ID)
+    logger.info("LangExtract service ready — model=%s  base_url=%s", MODEL_ID, BASE_URL or "<openai default>")
     yield
 
 
@@ -52,6 +52,7 @@ class ExtractResponse(BaseModel):
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest):
     prompt = _load_prompt()
+    model_params = {"base_url": BASE_URL} if BASE_URL else {}
 
     try:
         result = lx.extract(
@@ -60,7 +61,7 @@ def extract(req: ExtractRequest):
             examples=req.examples or _default_examples(),
             model_id=MODEL_ID,
             api_key=API_KEY,
-            #model_url=BASE_URL,
+            language_model_params=model_params,
             max_char_buffer=MAX_CHAR_BUFFER,
             show_progress=False,
             fence_output=True,
@@ -70,17 +71,12 @@ def extract(req: ExtractRequest):
         logger.error("Extraction failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-    # lx.extract() returns a single AnnotatedDocument when input is a string,
-    # or a list when input is an iterable of Documents.
     docs = result if isinstance(result, list) else [result]
-
-    # AnnotatedDocument.extractions holds the list of Extraction dataclasses.
-    # dataclasses.asdict() is used instead of __dict__ to correctly serialize
-    # nested dataclasses and exclude private fields like _token_interval.
     extractions = [
         dataclasses.asdict(ann)
         for doc in docs
         for ann in (doc.extractions or [])
+        if ann is not None
     ]
     return ExtractResponse(extractions=extractions)
 
@@ -105,32 +101,22 @@ def _default_examples():
                 lx.data.Extraction(
                     extraction_class="rolle",
                     extraction_text="Data Scientist",
-                    attributes={
-                        "verantwortung": "Konzeption von ML-Modellen",
-                    }
+                    attributes={"verantwortung": "Konzeption von ML-Modellen"}
                 ),
                 lx.data.Extraction(
                     extraction_class="tool",
                     extraction_text="Microsoft Copilot",
-                    attributes={
-                        "anbieter": "Microsoft",
-                        "einsatzbereich": "T\u00e4gliche B\u00fcroarbeit",
-                    }
+                    attributes={"anbieter": "Microsoft", "einsatzbereich": "T\u00e4gliche B\u00fcroarbeit"}
                 ),
                 lx.data.Extraction(
                     extraction_class="rahmenwerk",
                     extraction_text="AI Act",
-                    attributes={
-                        "herausgeber": "EU",
-                        "zweck": "Regulierung von KI-Systemen",
-                    }
+                    attributes={"herausgeber": "EU", "zweck": "Regulierung von KI-Systemen"}
                 ),
                 lx.data.Extraction(
                     extraction_class="konzept",
                     extraction_text="Datenkompetenz",
-                    attributes={
-                        "definition": "Grundvoraussetzung f\u00fcr KI-Kompetenz",
-                    }
+                    attributes={"definition": "Grundvoraussetzung f\u00fcr KI-Kompetenz"}
                 ),
             ]
         )
