@@ -12,3 +12,4 @@ openai
 SPARQLWrapper
 pyyaml
 linkml
+thefuzz

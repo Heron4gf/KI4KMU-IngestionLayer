@@ -4,56 +4,24 @@ import logging
 import unicodedata
 from urllib.parse import quote
 from pathlib import Path
-
 import yaml
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, DIGEST
+
+from app.utils.string_similarity import are_strings_similar
 from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA_PATH = Path(__file__).parent.parent.parent / "ontology" / "ki_kmu_schema.yaml"
+_SCHEMA_PATH = Path(__file__).parent.parent.parent / "ontology" / "ai_sme_schema.yaml"
+_ENTITY_CACHE = {}
 
-_ACRONYMS = {"kmu", "fhnw", "ki", "nlp", "ml", "ai", "eu", "erp", "crm", "iot", "api", "kpi"}
-
-
-def _load_valid_types() -> tuple[set[str], set[str]]:
-    try:
-        with open(_SCHEMA_PATH, encoding="utf-8") as f:
-            schema = yaml.safe_load(f)
-        classes = schema.get("classes", {})
-        entity_classes = {
-            name.lower() for name, cls in classes.items()
-            if not cls.get("abstract", False) and name != "Beziehung"
-        }
-        rel_types = set(
-            schema.get("enums", {})
-            .get("BeziehungsTyp", {})
-            .get("permissible_values", {})
-            .keys()
-        )
-        return entity_classes, rel_types
-    except FileNotFoundError:
-        logger.warning("Schema not found at %s — type validation disabled", _SCHEMA_PATH)
-        return set(), set()
-
-
-VALID_ENTITY_CLASSES, VALID_REL_TYPES = _load_valid_types()
-
-
-def _canonical_id(raw: str) -> str:
-    nfd = unicodedata.normalize("NFD", raw)
-    ascii_str = nfd.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^\w]+", "_", ascii_str.lower()).strip("_")
-    slug = re.sub(r"_+", "_", slug)
-    if slug in _ACRONYMS:
-        return slug.upper()
-    return slug
-
-
-def _get_sparql_client() -> SPARQLWrapper:
-    endpoint = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}/statements"
+def _get_sparql_client(is_read=False) -> SPARQLWrapper:
+    endpoint = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}"
+    if not is_read:
+        endpoint += "/statements"
     sparql = SPARQLWrapper(endpoint)
-    sparql.setMethod(POST)
+    if not is_read:
+        sparql.setMethod(POST)
     sparql.setReturnFormat(JSON)
     user = os.getenv("GRAPHDB_USER")
     password = os.getenv("GRAPHDB_PASSWORD")
@@ -62,16 +30,39 @@ def _get_sparql_client() -> SPARQLWrapper:
         sparql.setCredentials(user, password)
     return sparql
 
+_SPARQL_READ = _get_sparql_client(is_read=True)
+_SPARQL_WRITE = _get_sparql_client(is_read=False)
+
+def _load_valid_types() -> tuple[set[str], set[str]]:
+    try:
+        with open(_SCHEMA_PATH, encoding="utf-8") as f:
+            schema = yaml.safe_load(f)
+        classes = schema.get("classes", {})
+        entity_classes = {
+            name.lower() for name, cls in classes.items()
+            if not cls.get("abstract", False) and name != "Relationship"
+        }
+        rel_types = set(
+            schema.get("enums", {}).get("RelationshipType", {}).get("permissible_values", {}).keys()
+        )
+        return entity_classes, rel_types
+    except FileNotFoundError:
+        return set(), set()
+
+VALID_ENTITY_CLASSES, VALID_REL_TYPES = _load_valid_types()
+
+def _canonical_id(raw: str) -> str:
+    nfd = unicodedata.normalize("NFD", raw)
+    ascii_str = nfd.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^\w]+", "_", ascii_str.lower()).strip("_")
+    return re.sub(r"_+", "_", slug)
 
 def _run_update(query: str) -> None:
-    sparql = _get_sparql_client()
-    sparql.setQuery(query)
-    sparql.query()
-
+    _SPARQL_WRITE.setQuery(query)
+    _SPARQL_WRITE.query()
 
 def _uri(local: str) -> str:
     return f"pi:{quote(str(local), safe='')}"
-
 
 def _literal(value) -> str:
     if isinstance(value, bool):
@@ -83,135 +74,108 @@ def _literal(value) -> str:
     escaped = str(value).replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
     return f'"""{escaped}"""'
 
+def _load_cache_for_class(class_uri: str) -> None:
+    if class_uri in _ENTITY_CACHE:
+        return
+    query = f"{PREFIXES}\nSELECT ?entity ?label WHERE {{ ?entity rdf:type {class_uri} . ?entity rdfs:label ?label . }}"
+    try:
+        _SPARQL_READ.setQuery(query)
+        results = _SPARQL_READ.query().convert()
+        _ENTITY_CACHE[class_uri] = {
+            r["label"]["value"].lower(): r["entity"]["value"]
+            for r in results["results"]["bindings"]
+        }
+    except Exception as e:
+        logger.error("Cache load failed: %s", e)
+        _ENTITY_CACHE[class_uri] = {}
+
+def _find_duplicate_entity(label: str, class_uri: str) -> str | None:
+    _load_cache_for_class(class_uri)
+    cache = _ENTITY_CACHE[class_uri]
+    
+    lower_label = label.lower()
+    
+    # We achieve O(1) time complexity here through a Hash Map (dictionary) lookup.
+    # By mapping the lowercase labels to URIs when we load the cache, 
+    # we can check if the current label exists directly via its hash.
+    # This bypasses the need to iterate through the entire dataset O(n).
+    if lower_label in cache:
+        return cache[lower_label]
+        
+    for existing_lower_label, uri in cache.items():
+        if are_strings_similar(lower_label, existing_lower_label):
+            return uri
+            
+    return None
 
 def _class_uri(class_name: str) -> str:
-    label = class_name.strip().capitalize()
-    return f"<{BASE_NS}{label}>"
-
+    return f"<{BASE_NS}{class_name.strip().capitalize()}>"
 
 def insert_chunk(chunk_id: str, metadata: dict) -> None:
     chunk_uri = _uri(chunk_id)
-    meta_triples = "\n    ".join(
-        f"{chunk_uri} {_uri(k)} {_literal(v)} ."
-        for k, v in metadata.items()
-        if v is not None
-    )
-    query = f"""
-{PREFIXES}
-INSERT DATA {{
-    {chunk_uri} rdf:type pi:Chunk .
-    {chunk_uri} rdfs:label "{chunk_id}" .
-    {meta_triples}
-}}
-"""
-    try:
-        _run_update(query)
-        logger.info("insert_chunk OK  chunk_id=%s", chunk_id)
-    except Exception as e:
-        logger.error("insert_chunk FAILED  chunk_id=%s  error=%s", chunk_id, e)
-        raise
+    meta_triples = "\n    ".join(f"{chunk_uri} {_uri(k)} {_literal(v)} ." for k, v in metadata.items() if v is not None)
+    query = f"{PREFIXES}\nINSERT DATA {{\n    {chunk_uri} rdf:type pi:Chunk .\n    {chunk_uri} rdfs:label \"{chunk_id}\" .\n    {meta_triples}\n}}"
+    _run_update(query)
 
+def _merge_mention(existing_uri_full: str, chunk_id: str) -> None:
+    chunk_uri = _uri(chunk_id)
+    existing_uri = f"<{existing_uri_full}>"
+    query = f"{PREFIXES}\nINSERT DATA {{\n    {existing_uri} pi:mentionedIn {chunk_uri} .\n}}"
+    _run_update(query)
 
 def insert_typed_entity(extraction: dict, chunk_id: str) -> None:
     if not extraction:
         return
-
+        
     raw_class = extraction.get("extraction_class", "").strip().lower()
     extraction_text = extraction.get("extraction_text", "").strip()
     attributes = extraction.get("attributes") or {}
-
+    
     raw_id = attributes.get("id") or extraction_text
     entity_id = _canonical_id(raw_id)
-
-    if not entity_id or not extraction_text:
-        logger.debug("Skipping empty extraction: %s", extraction)
+    
+    if not entity_id or not extraction_text or raw_class == "relationship":
         return
-
-    if raw_class == "beziehung":
+        
+    class_triple_uri = _class_uri(raw_class) if not VALID_ENTITY_CLASSES or raw_class in VALID_ENTITY_CLASSES else "pi:Entity"
+    
+    duplicate_uri = _find_duplicate_entity(extraction_text, class_triple_uri)
+    if duplicate_uri:
+        _merge_mention(duplicate_uri, chunk_id)
         return
-
-    if VALID_ENTITY_CLASSES and raw_class not in VALID_ENTITY_CLASSES:
-        logger.warning(
-            "Unknown extraction_class '%s' — not in ontology schema. Storing as pi:Entity.",
-            raw_class,
-        )
-        class_triple_uri = "pi:Entity"
-    else:
-        class_triple_uri = _class_uri(raw_class)
 
     entity_uri = _uri(entity_id)
-    chunk_uri  = _uri(chunk_id)
-
-    attr_triples = "\n    ".join(
-        f"{entity_uri} {_uri(k)} {_literal(v)} ."
-        for k, v in attributes.items()
-        if v is not None and k != "id"
-    )
-
-    query = f"""
-{PREFIXES}
-INSERT DATA {{
-    {entity_uri} rdf:type          {class_triple_uri} .
-    {entity_uri} rdfs:label        "{extraction_text.replace(chr(34), chr(39))}" .
-    {entity_uri} pi:mentionedIn    {chunk_uri} .
-    {attr_triples}
-}}
-"""
-    try:
-        _run_update(query)
-        logger.info("insert_typed_entity OK  class=%s  id=%s", raw_class, entity_id)
-    except Exception as e:
-        logger.error("insert_typed_entity FAILED  id=%s  error=%s", entity_id, e)
-        raise
-
+    chunk_uri = _uri(chunk_id)
+    attr_triples = "\n    ".join(f"{entity_uri} {_uri(k)} {_literal(v)} ." for k, v in attributes.items() if v is not None and k != "id")
+    
+    clean_text = extraction_text.replace("\\", "\\\\").replace('"', '\\"')
+    query = f"{PREFIXES}\nINSERT DATA {{\n    {entity_uri} rdf:type {class_triple_uri} .\n    {entity_uri} rdfs:label \"{clean_text}\" .\n    {entity_uri} pi:mentionedIn {chunk_uri} .\n    {attr_triples}\n}}"
+    
+    _run_update(query)
+    
+    clean_uri = entity_uri.replace("pi:", f"{BASE_NS}").strip("<>")
+    _ENTITY_CACHE.setdefault(class_triple_uri, {})[extraction_text.lower()] = clean_uri
 
 def insert_relationship(extraction: dict, chunk_id: str) -> None:
-    if not extraction:
+    if not extraction or extraction.get("extraction_class", "").strip().lower() != "relationship":
         return
-
-    if extraction.get("extraction_class", "").strip().lower() != "beziehung":
-        return
-
+        
     attrs = extraction.get("attributes") or {}
-
-    rel_typ    = attrs.get("typ", "").strip()
-    subjekt_id = _canonical_id(attrs.get("subjekt_id", "").strip())
-    objekt_id  = _canonical_id(attrs.get("objekt_id", "").strip())
-    kontext    = attrs.get("kontext", "")
-
-    if not (rel_typ and subjekt_id and objekt_id):
-        logger.debug("Incomplete beziehung extraction — skipping: %s", attrs)
+    rel_type = attrs.get("type", "").strip()
+    subject_id = _canonical_id(attrs.get("subject_id", "").strip())
+    object_id = _canonical_id(attrs.get("object_id", "").strip())
+    context = attrs.get("context", "")
+    
+    if not (rel_type and subject_id and object_id):
         return
-
-    if VALID_REL_TYPES and rel_typ not in VALID_REL_TYPES:
-        logger.warning("Unknown relationship type '%s' — not in ontology schema.", rel_typ)
-
-    rel_id    = f"rel_{subjekt_id}_{rel_typ}_{objekt_id}"
-    rel_uri   = _uri(rel_id)
-    subj_uri  = _uri(subjekt_id)
-    obj_uri   = _uri(objekt_id)
+        
+    rel_id = f"rel_{subject_id}_{rel_type}_{object_id}"
+    rel_uri = _uri(rel_id)
+    subj_uri = _uri(subject_id)
+    obj_uri = _uri(object_id)
     chunk_uri = _uri(chunk_id)
-
-    kontext_triple = (
-        f'{rel_uri} pi:kontext {_literal(kontext)} .'
-        if kontext else ""
-    )
-
-    query = f"""
-{PREFIXES}
-INSERT DATA {{
-    {rel_uri}  rdf:type        pi:Beziehung .
-    {rel_uri}  pi:typ          "{rel_typ}" .
-    {rel_uri}  pi:subjekt      {subj_uri} .
-    {rel_uri}  pi:objekt       {obj_uri} .
-    {rel_uri}  pi:mentionedIn  {chunk_uri} .
-    {kontext_triple}
-    {subj_uri} {_uri(rel_typ)} {obj_uri} .
-}}
-"""
-    try:
-        _run_update(query)
-        logger.info("insert_relationship OK  %s -[%s]-> %s", subjekt_id, rel_typ, objekt_id)
-    except Exception as e:
-        logger.error("insert_relationship FAILED  rel=%s  error=%s", rel_id, e)
-        raise
+    
+    context_triple = f'{rel_uri} pi:context {_literal(context)} .' if context else ""
+    
+    query = f"{PREFIXES}\nINSERT DATA {{\n    {rel_uri} rdf:type pi:Relationship .\n    {rel_uri} pi:type \"{rel_type}\" .\n    {rel_uri} pi:subject {subj_uri} .\n    {rel_uri} pi:object {obj_uri} .\n    {rel_uri} pi:mentionedIn {chunk_uri} .\n    {context_triple}\n    {subj_uri} {_uri(rel_type)} {obj_uri} .\n}}"
+    _run_update(query)
