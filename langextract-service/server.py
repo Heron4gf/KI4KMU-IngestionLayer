@@ -12,7 +12,6 @@ import langextract as lx
 from dotenv import load_dotenv
 load_dotenv()
 
-
 logger = logging.getLogger(__name__)
 
 API_KEY     = os.environ["LANGEXTRACT_API_KEY"]
@@ -22,13 +21,11 @@ BASE_URL    = os.environ.get("LANGEXTRACT_BASE_URL")
 
 MAX_CHAR_BUFFER = 10_000_000
 
-
 def _load_prompt() -> str:
     path = Path(PROMPT_PATH)
     if not path.exists():
         raise RuntimeError(f"Prompt file not found: {PROMPT_PATH}")
     return path.read_text(encoding="utf-8").strip()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,18 +33,14 @@ async def lifespan(app: FastAPI):
     logger.info("LangExtract service ready — model=%s  base_url=%s", MODEL_ID, BASE_URL or "<openai default>")
     yield
 
-
 app = FastAPI(title="LangExtract Service", lifespan=lifespan)
-
 
 class ExtractRequest(BaseModel):
     text: str
     examples: list[dict] = []
 
-
 class ExtractResponse(BaseModel):
     extractions: list[dict]
-
 
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest):
@@ -80,11 +73,9 @@ def extract(req: ExtractRequest):
     ]
     return ExtractResponse(extractions=extractions)
 
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
 
 def _default_examples():
     from langextract.core.data import ExampleData
@@ -94,8 +85,9 @@ def _default_examples():
             text=(
                 "Der Data Scientist konzipiert ML-Modelle. "
                 "Microsoft Copilot ist in Microsoft 365 integriert. "
-                "Der AI Act der EU reguliert KI-Systeme nach Risikoniveau. "
-                "Ohne Datenkompetenz keine KI-Kompetenz."
+                "Der AI Act der EU reguliert KI-Systeme. "
+                "Alice Müller arbeitet in Zürich, Schweiz. "
+                "Sie hat den KI-Report 2026 geschrieben."
             ),
             extractions=[
                 lx.data.Extraction(
@@ -106,17 +98,32 @@ def _default_examples():
                 lx.data.Extraction(
                     extraction_class="tool",
                     extraction_text="Microsoft Copilot",
-                    attributes={"anbieter": "Microsoft", "einsatzbereich": "T\u00e4gliche B\u00fcroarbeit"}
+                    attributes={"anbieter": "Microsoft", "einsatzbereich": "Büroarbeit"}
                 ),
                 lx.data.Extraction(
                     extraction_class="rahmenwerk",
                     extraction_text="AI Act",
-                    attributes={"herausgeber": "EU", "zweck": "Regulierung von KI-Systemen"}
+                    attributes={"herausgeber": "EU", "zweck": "Regulierung"}
                 ),
                 lx.data.Extraction(
-                    extraction_class="konzept",
-                    extraction_text="Datenkompetenz",
-                    attributes={"definition": "Grundvoraussetzung f\u00fcr KI-Kompetenz"}
+                    extraction_class="person",
+                    extraction_text="Alice Müller",
+                    attributes={"id": "alice_mueller"}
+                ),
+                lx.data.Extraction(
+                    extraction_class="city",
+                    extraction_text="Zürich",
+                    attributes={"id": "zuerich", "land": "Schweiz"}
+                ),
+                lx.data.Extraction(
+                    extraction_class="place",
+                    extraction_text="Schweiz",
+                    attributes={"id": "schweiz", "typ": "Land"}
+                ),
+                lx.data.Extraction(
+                    extraction_class="document",
+                    extraction_text="KI-Report 2026",
+                    attributes={"id": "ki_report_2026", "autor": "Alice Müller"}
                 ),
             ]
         )
