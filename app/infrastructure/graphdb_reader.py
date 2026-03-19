@@ -24,7 +24,7 @@ _SPARQL_READ = _get_sparql_client()
 
 
 def _uri(local: str) -> str:
-    return f"pi:{quote(str(local), safe='')}"
+    return f"<{BASE_NS}{local}>"
 
 
 def get_entities_from_chunk(chunk_id: str) -> list[dict]:
@@ -59,20 +59,23 @@ SELECT ?entity ?label ?type WHERE {{
 
 def get_related_chunks_from_entities(
     entity_uris: list[str],
-    exclude_chunk_id: str,
+    exclude_chunk_ids: list[str],
     limit: int,
 ) -> list[dict]:
     """
     Given a list of entity URIs, find all other Chunk nodes that those entities
-    are mentioned in, excluding the seed chunk.
+    are mentioned in, excluding the seed chunks.
     Returns a list of dicts with keys: chunk_id, text
     """
     if not entity_uris:
         return []
 
-    # Build VALUES clause for entity URIs
-    entity_values = " ".join(f'"{uri}"' for uri in entity_uris)
-    exclude_uri = _uri(exclude_chunk_id)
+    # Build VALUES clause for entity URIs (use angle brackets for IRIs)
+    entity_values = " ".join(f"<{uri}>" for uri in entity_uris)
+    
+    # Build FILTER NOT IN clause for multiple exclude chunk IDs
+    exclude_uris = [_uri(cid) for cid in exclude_chunk_ids]
+    exclude_list = " ".join(exclude_uris)
 
     query = f"""
 {PREFIXES}
@@ -81,7 +84,7 @@ SELECT DISTINCT ?chunk ?text WHERE {{
     ?chunk rdf:type pi:Chunk .
     ?chunk rdfs:label ?chunk_id .
     ?chunk pi:text ?text .
-    FILTER (?chunk != {exclude_uri})
+    FILTER (?chunk NOT IN ({exclude_list}))
     VALUES ?entity {{ {entity_values} }}
 }}
 LIMIT {limit}
@@ -91,9 +94,9 @@ LIMIT {limit}
         results = _SPARQL_READ.query().convert()
         chunks = []
         for row in results.get("results", {}).get("bindings", []):
-            # Extract chunk_id from the full URI (e.g., pi:doc-id_chunk_0 -> doc-id_chunk_0)
+            # Extract chunk_id from the full URI by stripping BASE_NS
             chunk_uri = row["chunk"]["value"]
-            chunk_id = chunk_uri.replace("pi:", "")
+            chunk_id = chunk_uri.replace(BASE_NS, "")
             chunks.append({
                 "chunk_id": chunk_id,
                 "text": row["text"]["value"],
