@@ -1,3 +1,4 @@
+import os
 import time
 import threading
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 import requests
 import streamlit as st
 
-API_BASE = "http://localhost:8000/v1"
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:8001/v1")
 
 SSTATUS_ICON = {
     "pending": "⏳",
