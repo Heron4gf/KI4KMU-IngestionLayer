@@ -3,8 +3,6 @@ import re
 import logging
 import unicodedata
 from urllib.parse import quote
-from pathlib import Path
-import yaml
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, DIGEST
 
 from app.utils.string_similarity import are_strings_similar
@@ -12,7 +10,6 @@ from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA_PATH = Path(__file__).parent.parent.parent / "ontology" / "ai_sme_schema.yaml"
 _ENTITY_CACHE = {}
 
 def _get_sparql_client(is_read=False) -> SPARQLWrapper:
@@ -32,24 +29,6 @@ def _get_sparql_client(is_read=False) -> SPARQLWrapper:
 
 _SPARQL_READ = _get_sparql_client(is_read=True)
 _SPARQL_WRITE = _get_sparql_client(is_read=False)
-
-def _load_valid_types() -> tuple[set[str], set[str]]:
-    try:
-        with open(_SCHEMA_PATH, encoding="utf-8") as f:
-            schema = yaml.safe_load(f)
-        classes = schema.get("classes", {})
-        entity_classes = {
-            name.lower() for name, cls in classes.items()
-            if not cls.get("abstract", False) and name != "Relationship"
-        }
-        rel_types = set(
-            schema.get("enums", {}).get("RelationshipType", {}).get("permissible_values", {}).keys()
-        )
-        return entity_classes, rel_types
-    except FileNotFoundError:
-        return set(), set()
-
-VALID_ENTITY_CLASSES, VALID_REL_TYPES = _load_valid_types()
 
 def _canonical_id(raw: str) -> str:
     nfd = unicodedata.normalize("NFD", raw)
@@ -137,7 +116,7 @@ def insert_typed_entity(extraction: dict, chunk_id: str) -> None:
     if not entity_id or not extraction_text or raw_class == "relationship":
         return
         
-    class_triple_uri = _class_uri(raw_class) if not VALID_ENTITY_CLASSES or raw_class in VALID_ENTITY_CLASSES else "pi:Entity"
+    class_triple_uri = _class_uri(raw_class)
     
     duplicate_uri = _find_duplicate_entity(extraction_text, class_triple_uri)
     if duplicate_uri:

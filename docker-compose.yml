@@ -27,14 +27,17 @@ services:
       - GRAPHDB_USER=${GRAPHDB_USER}
       - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD}
       - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/root/.cache/huggingface
     volumes:
       - ./prompts/captioner.md:/app/prompts/captioner.md:ro
+      - hf_cache:/root/.cache/huggingface
     depends_on:
       - chromadb
       - unstructured
       - graphdb
     networks:
       - backend
+
 
 
   chromadb:
@@ -49,6 +52,7 @@ services:
       - backend
 
 
+
   unstructured:
     image: robwilkes/unstructured-api:latest
     container_name: unstructured
@@ -57,6 +61,7 @@ services:
       - "8002:8000"
     networks:
       - backend
+
 
 
   graphdb:
@@ -77,8 +82,9 @@ services:
     networks:
       - backend
 
+
   langextract:
-    build: ./langextract-service
+    build: ./langextract_service
     container_name: langextract
     restart: unless-stopped
     ports:
@@ -95,5 +101,9 @@ services:
     networks:
       - backend
 
+
 networks:
   backend:
+
+volumes:
+  hf_cache:
