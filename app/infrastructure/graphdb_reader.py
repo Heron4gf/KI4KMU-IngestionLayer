@@ -1,9 +1,6 @@
 import logging
 import os
-import re
-from urllib.parse import quote
 from SPARQLWrapper import SPARQLWrapper, JSON, DIGEST
-
 from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
 
 logger = logging.getLogger(__name__)
@@ -25,8 +22,7 @@ _SPARQL_READ = _get_sparql_client()
 
 
 def _uri(local: str) -> str:
-    """Use same CURIE format as graphdb_writer.py for consistency."""
-    return f"pi:{quote(str(local), safe='')}"
+    return f"<{BASE_NS}{local}>"
 
 
 def get_entities_from_chunk(chunk_id: str) -> list[dict]:
