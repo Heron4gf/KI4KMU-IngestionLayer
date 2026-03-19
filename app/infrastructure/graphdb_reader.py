@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from urllib.parse import quote
 from SPARQLWrapper import SPARQLWrapper, JSON, DIGEST
 
@@ -24,7 +25,8 @@ _SPARQL_READ = _get_sparql_client()
 
 
 def _uri(local: str) -> str:
-    return f"<{BASE_NS}{local}>"
+    """Use same CURIE format as graphdb_writer.py for consistency."""
+    return f"pi:{quote(str(local), safe='')}"
 
 
 def get_entities_from_chunk(chunk_id: str) -> list[dict]:
@@ -94,8 +96,10 @@ LIMIT {limit}
         results = _SPARQL_READ.query().convert()
         chunks = []
         for row in results.get("results", {}).get("bindings", []):
-            # Extract chunk_id from the full URI by stripping BASE_NS
+            # Extract chunk_id from the full IRI returned by SPARQL
+            # GraphDB returns full IRIs like http://pdf-ingestion/ontology/chunk_id
             chunk_uri = row["chunk"]["value"]
+            # Strip the BASE_NS prefix to get the local chunk_id
             chunk_id = chunk_uri.replace(BASE_NS, "")
             chunks.append({
                 "chunk_id": chunk_id,
