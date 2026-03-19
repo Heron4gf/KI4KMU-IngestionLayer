@@ -10,6 +10,7 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 - [Installation](#installation)
 - [Building](#building)
 - [Running](#running)
+- [Web GUI Interface](#web-gui-interface)
 - [REST API Endpoints](#rest-api-endpoints)
 - [Docker Deployment](#docker-deployment)
 
@@ -121,6 +122,48 @@ docker run -d -p 8001:8001 -v $(pwd)/chroma-data:/app/chroma-data --name pdf-ing
 ```bash
 docker-compose up
 ```
+
+---
+
+## Web GUI Interface
+
+A Streamlit-based web interface is available for easy document upload and job monitoring.
+
+### Accessing the GUI
+
+Once the services are running, access the web interface at:
+
+**URL**: http://localhost:8501
+
+The GUI provides a user-friendly way to:
+- Upload PDF documents through a drag-and-drop interface
+- Monitor ingestion job status in real-time
+- View processing results including chunk counts
+- Track multiple documents simultaneously
+
+### GUI Example
+
+Here's a preview of the web interface:
+
+![GUI Example](./images/gui_example.png)
+
+The interface shows:
+- **File Upload**: Drag and drop or select PDF files
+- **Job Status**: Real-time status updates with visual indicators (⏳ pending, 🔄 processing, ✅ completed, ❌ failed)
+- **Results**: Chunk counts for successfully processed documents
+- **Error Display**: Clear error messages for failed jobs
+
+### Running the GUI Locally
+
+If you prefer to run the GUI outside of Docker:
+
+```bash
+cd gui
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+The GUI will be available at http://localhost:8501.
 
 ## REST API Endpoints
 
