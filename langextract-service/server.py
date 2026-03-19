@@ -60,7 +60,7 @@ def extract(req: ExtractRequest):
             examples=req.examples or _default_examples(),
             model_id=MODEL_ID,
             api_key=API_KEY,
-            language_model_params=model_params,
+            #language_model_params=model_params, # keep this commented for now
             max_char_buffer=MAX_CHAR_BUFFER,
             show_progress=False,
             fence_output=True,
