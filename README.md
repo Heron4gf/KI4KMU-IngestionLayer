@@ -22,7 +22,7 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 - **Docker Support**: Full Docker and Docker Compose support for easy deployment
 
 ## Architecture
-![Architecture](./ingestion_layer_structure.png)
+![Architecture](./images/ingestion_layer_structure.png)
 
 ## Graph Database Integration
 The system includes a GraphDB integration that stores extracted entities and their relationships. The graph database provides structured knowledge representation alongside the vector database for semantic search.
@@ -37,7 +37,7 @@ The system uses a custom ontology defined in `ontology/ki_kmu_schema.yaml` that 
 ### Example Graph Result
 Here's an example of the graph structure generated from document processing:
 
-![Example Graph Result](./example_graph_result.png)
+![Example Graph Result](./images/example_graph_result.png)
 
 The graph visualization shows:
 - **Nodes**: Extracted entities (colored by type)
