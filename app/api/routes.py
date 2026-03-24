@@ -9,7 +9,7 @@ from app.models.api_models import QueryRequest, QueryResponse
 from app.models.job_models import JobAccepted, JobStatusResponse
 from app.services.document_service import process_document
 from app.infrastructure.chroma_repository import semantic_search
-from app.infrastructure.job_store import JobStatus, create_job, get_job, update_job
+from app.infrastructure.job_store import JobStatus, JobStage, create_job, get_job, update_job
 
 logger = logging.getLogger(__name__)
 v1_router = APIRouter(prefix="/v1")
@@ -24,11 +24,12 @@ async def _run_ingestion(job_id: str, file_bytes: bytes, filename: str) -> None:
         await update_job(job_id, status=JobStatus.PROCESSING)
         tmp.write_bytes(file_bytes)
         document_id = str(uuid.uuid4())
-        num_chunks = await process_document(tmp, document_id)
+        num_chunks = await process_document(tmp, document_id, job_id=job_id)
         if num_chunks == 0:
-            await update_job(job_id, status=JobStatus.FAILED, error="No chunks were stored for this document.")
+            await update_job(job_id, status=JobStatus.FAILED, stage=JobStage.FAILED, error="No chunks were stored for this document.")
         else:
-            await update_job(job_id, status=JobStatus.COMPLETED, document_id=document_id, num_chunks=num_chunks)
+            await update_job(job_id, status=JobStatus.COMPLETED, stage=JobStage.COMPLETED, document_id=document_id, num_chunks=num_chunks)
+
     except Exception as e:
         logger.exception(f"[INGESTION] Job {job_id} failed: {e}")
         await update_job(job_id, status=JobStatus.FAILED, error=str(e))
