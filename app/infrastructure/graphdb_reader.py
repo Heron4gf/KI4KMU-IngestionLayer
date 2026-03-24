@@ -55,47 +55,33 @@ SELECT ?entity ?label ?type WHERE {{
         return []
 
 
-def get_related_chunks_from_entities(
-    entity_uris: list[str],
-    exclude_chunk_ids: list[str],
-    limit: int,
-) -> list[dict]:
-    """
-    Given a list of entity URIs, find all other Chunk nodes that those entities
-    are mentioned in, excluding the seed chunks.
-    Returns a list of dicts with keys: chunk_id, text
-    """
-    if not entity_uris:
-        return []
-
-    # Build VALUES clause for entity URIs (use angle brackets for IRIs)
+def _build_related_chunks_query(entity_uris: list[str], exclude_chunk_ids: list[str], limit: int) -> str:
     entity_values = " ".join(f"<{uri}>" for uri in entity_uris)
-    
-    # Build FILTER NOT IN clause for multiple exclude chunk IDs
     exclude_uris = [_uri(cid) for cid in exclude_chunk_ids]
-    exclude_list = " ".join(exclude_uris)
+    exclude_list = ", ".join(exclude_uris)
+    
+    filter_clause = f"FILTER (?chunk NOT IN ({exclude_list}))" if exclude_uris else ""
 
-    query = f"""
+    return f"""
 {PREFIXES}
 SELECT DISTINCT ?chunk ?text WHERE {{
     ?entity pi:mentionedIn ?chunk .
     ?chunk rdf:type pi:Chunk .
     ?chunk rdfs:label ?chunk_id .
     ?chunk pi:text ?text .
-    FILTER (?chunk NOT IN ({exclude_list}))
+    {filter_clause}
     VALUES ?entity {{ {entity_values} }}
 }}
 LIMIT {limit}
 """
+
+def _execute_and_parse_chunk_query(query: str) -> list[dict]:
     try:
         _SPARQL_READ.setQuery(query)
         results = _SPARQL_READ.query().convert()
         chunks = []
         for row in results.get("results", {}).get("bindings", []):
-            # Extract chunk_id from the full IRI returned by SPARQL
-            # GraphDB returns full IRIs like http://pdf-ingestion/ontology/chunk_id
             chunk_uri = row["chunk"]["value"]
-            # Strip the BASE_NS prefix to get the local chunk_id
             chunk_id = chunk_uri.replace(BASE_NS, "")
             chunks.append({
                 "chunk_id": chunk_id,
@@ -105,3 +91,14 @@ LIMIT {limit}
     except Exception as e:
         logger.warning("[READER] Failed to get related chunks: %s", e)
         return []
+
+def get_related_chunks_from_entities(
+    entity_uris: list[str],
+    exclude_chunk_ids: list[str],
+    limit: int,
+) -> list[dict]:
+    if not entity_uris:
+        return []
+
+    query = _build_related_chunks_query(entity_uris, exclude_chunk_ids, limit)
+    return _execute_and_parse_chunk_query(query)
