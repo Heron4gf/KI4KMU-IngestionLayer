@@ -13,3 +13,4 @@ SPARQLWrapper
 pyyaml
 linkml
 thefuzz
+pypdf

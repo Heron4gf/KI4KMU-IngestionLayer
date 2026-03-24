@@ -1,6 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
-from app.infrastructure.job_store import JobStatus
+from app.infrastructure.job_store import JobStatus, JobStage
 
 
 class JobAccepted(BaseModel):
@@ -12,6 +12,7 @@ class JobAccepted(BaseModel):
 class JobStatusResponse(BaseModel):
     job_id: str
     status: JobStatus
+    stage: Optional[JobStage] = None
     filename: str
     document_id: Optional[str] = None
     num_chunks: Optional[int] = None

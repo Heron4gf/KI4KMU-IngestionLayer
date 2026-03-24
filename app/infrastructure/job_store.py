@@ -11,10 +11,22 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class JobStage(str, Enum):
+    UPLOAD_RECEIVED = "upload_received"
+    CHUNKING_TEXT = "chunking_text"
+    EXTRACTING_IMAGES = "extracting_images"
+    STORING_CHUNKS = "storing_chunks"
+    EXTRACTING_ENTITIES = "extracting_entities"
+    WRITING_GRAPHDB = "writing_graphdb"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class JobRecord(BaseModel):
     job_id: str
     status: JobStatus
     filename: str
+    stage: Optional[JobStage] = None
     document_id: Optional[str] = None
     num_chunks: Optional[int] = None
     error: Optional[str] = None
@@ -25,7 +37,7 @@ _lock = asyncio.Lock()
 
 
 async def create_job(job_id: str, filename: str) -> JobRecord:
-    record = JobRecord(job_id=job_id, status=JobStatus.PENDING, filename=filename)
+    record = JobRecord(job_id=job_id, status=JobStatus.PENDING, filename=filename, stage=JobStage.UPLOAD_RECEIVED)
     async with _lock:
         _store[job_id] = record
     return record
