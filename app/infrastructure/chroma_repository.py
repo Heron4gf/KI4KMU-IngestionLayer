@@ -23,6 +23,7 @@ def _build_element_metadata(
     element: Dict[str, Any],
     document_id: str,
     pdf_hash: str,
+    chunk_id: str,
 ) -> Dict[str, Any]:
     element_type = cast_to_str(element.get("type", ""))
     raw_metadata = element.get("metadata") or {}
@@ -30,6 +31,7 @@ def _build_element_metadata(
     metadata["document_id"] = document_id
     metadata["element_type"] = element_type
     metadata["pdf_hash"] = pdf_hash
+    metadata["chunk_id"] = chunk_id
     return metadata
 
 def _process_text_elements(
@@ -45,14 +47,15 @@ def _process_text_elements(
     idx_counter = start_index
 
     for element in text_elements:
-        metadata = _build_element_metadata(element, document_id, pdf_hash)
-        metadata["modality"] = "text"
-        
         text = cast_to_str(element.get("text"))
         if not text:
             continue
+        
+        chunk_id = f"{document_id}_chunk_{idx_counter}"
+        metadata = _build_element_metadata(element, document_id, pdf_hash, chunk_id)
+        metadata["modality"] = "text"
             
-        ids.append(f"{document_id}-{idx_counter}")
+        ids.append(chunk_id)
         metadatas.append(metadata)
         documents.append(text)
         texts_to_embed.append(text)
@@ -75,7 +78,6 @@ def _process_captioned_images(
     images_skipped = 0
 
     for element in captioned_images:
-        metadata = _build_element_metadata(element, document_id, pdf_hash)
         raw_metadata = element.get("metadata") or {}
         caption = raw_metadata.get("image_caption")
         image_b64 = raw_metadata.get("image_base64")
@@ -84,10 +86,12 @@ def _process_captioned_images(
             images_skipped += 1
             continue
 
+        chunk_id = f"{document_id}_chunk_{idx_counter}"
+        metadata = _build_element_metadata(element, document_id, pdf_hash, chunk_id)
         metadata["modality"] = "image"
         metadata["image_b64"] = image_b64
 
-        ids.append(f"{document_id}-{idx_counter}")
+        ids.append(chunk_id)
         metadatas.append(metadata)
         documents.append(caption)
         texts_to_embed.append(caption)
@@ -165,18 +169,20 @@ def semantic_search(query: str, top_k: int = 5) -> List[QueryResultItem]:
         n_results=top_k,
     )
 
+    ids = raw.get("ids", [[]])[0] if raw.get("ids") else []
     documents = raw.get("documents", [[]])[0] if raw.get("documents") else []
     metadatas = raw.get("metadatas", [[]])[0] if raw.get("metadatas") else []
     distances = raw.get("distances", [[]])[0] if raw.get("distances") else []
 
     results: List[QueryResultItem] = []
-    for doc, meta, dist in zip(documents, metadatas, distances):
+    for chunk_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
         is_image = meta.get("modality") == "image"
         item = QueryResultItem(
-            id=str(meta.get("document_id", "")),
+            id=str(chunk_id),
             text=str(doc) if not is_image else "[image]",
             score=float(dist),
             metadata=meta or {},
+            source="vector",
         )
         results.append(item)
 
