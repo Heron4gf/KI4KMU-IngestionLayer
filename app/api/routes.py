@@ -9,7 +9,7 @@ from app.models.api_models import QueryRequest, QueryResponse
 from app.models.job_models import JobAccepted, JobStatusResponse
 from app.services.document_service import process_document
 from app.services.query_service import hybrid_search
-from app.infrastructure.job_store import JobStatus, create_job, get_job, update_job
+from app.infrastructure.job_store import JobStatus, JobStage, create_job, get_job, update_job
 
 logger = logging.getLogger(__name__)
 v1_router = APIRouter(prefix="/v1")
