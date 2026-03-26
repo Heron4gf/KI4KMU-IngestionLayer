@@ -27,10 +27,11 @@ services:
       - GRAPHDB_USER=${GRAPHDB_USER}
       - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD}
       - HF_TOKEN=${HF_TOKEN}
-      - HF_HOME=/root/.cache/huggingface
+      - HF_HOME=/ki4kmu_data/.hf_cache
+      - EMBEDDING_MODEL_PATH=/ki4kmu_data/embedding-model
     volumes:
       - ./prompts/captioner.md:/app/prompts/captioner.md:ro
-      - hf_cache:/root/.cache/huggingface
+      - ki4kmu_data:/ki4kmu_data
     depends_on:
       - chromadb
       - unstructured
@@ -45,7 +46,10 @@ services:
     container_name: chromadb
     restart: unless-stopped
     volumes:
-      - ./chroma-data:/data
+      - ki4kmu_data:/ki4kmu_data
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/ki4kmu_data/chroma-data
     ports:
       - "8000:8000"
     networks:
@@ -71,7 +75,7 @@ services:
     ports:
       - "${GRAPHDB_PORT}:7200"
     volumes:
-      - ./graphdb-data:/opt/graphdb/home
+      - ki4kmu_data:/ki4kmu_data
     environment:
       - GDB_JAVA_OPTS=${GDB_JAVA_OPTS}
       - GRAPHDB_URL=${GRAPHDB_URL}
@@ -122,4 +126,5 @@ networks:
   backend:
 
 volumes:
-  hf_cache:
+  ki4kmu_data:
+    name: ki4kmu_data

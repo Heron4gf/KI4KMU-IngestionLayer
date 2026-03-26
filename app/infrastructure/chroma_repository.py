@@ -115,8 +115,8 @@ def build_chroma_payload(
         image_metadatas,
         image_documents,
         image_texts_to_embed,
-        images_added,
-        images_skipped,
+        #images_added,
+        #images_skipped,
         _,
     ) = _process_captioned_images(
         captioned_images, document_id, pdf_hash, start_index=idx_counter

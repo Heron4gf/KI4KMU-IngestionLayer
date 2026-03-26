@@ -4,7 +4,8 @@ from typing import List
 import torch
 from sentence_transformers import SentenceTransformer
 
-from app.core.config import TEXT_MODEL, HF_TOKEN
+from app.core.config import TEXT_MODEL, HF_TOKEN, EMBEDDING_MODEL_PATH
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +18,14 @@ class TextEmbedder:
     It does not handle any image processing or ML inference beyond embeddings.
     """
     def __init__(self, model_id: str = TEXT_MODEL):
-        if HF_TOKEN:
-            logger.info(f"Using HF_TOKEN for model download: {model_id}")
-            self._model = SentenceTransformer(model_id, trust_remote_code=True, token=HF_TOKEN)
+        if os.path.isdir(EMBEDDING_MODEL_PATH) and os.listdir(EMBEDDING_MODEL_PATH):
+            self._model = SentenceTransformer(EMBEDDING_MODEL_PATH, trust_remote_code=True)
         else:
-            logger.info(f"Downloading model without HF_TOKEN: {model_id}")
-            self._model = SentenceTransformer(model_id, trust_remote_code=True)
+            kwargs = {"trust_remote_code": True}
+            if HF_TOKEN:
+                kwargs["token"] = HF_TOKEN
+            self._model = SentenceTransformer(model_id, **kwargs)
+            self._model.save(EMBEDDING_MODEL_PATH)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model.to(self._device)
 
