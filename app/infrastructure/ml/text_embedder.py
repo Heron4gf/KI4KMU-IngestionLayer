@@ -10,10 +10,15 @@ from app.core.config import TEXT_MODEL, HF_TOKEN, EMBEDDING_MODEL_PATH
 
 logger = logging.getLogger(__name__)
 
+WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
+
+def _model_is_cached(path: str) -> bool:
+    return any(os.path.isfile(os.path.join(path, f)) for f in WEIGHT_FILES)
+
 
 class TextEmbedder:
     def __init__(self, model_id: str = TEXT_MODEL):
-        if not (os.path.isdir(EMBEDDING_MODEL_PATH) and os.listdir(EMBEDDING_MODEL_PATH)):
+        if not _model_is_cached(EMBEDDING_MODEL_PATH):
             logger.info(f"Downloading model {model_id} to {EMBEDDING_MODEL_PATH}")
             snapshot_download(
                 repo_id=model_id,
