@@ -4,7 +4,7 @@ services:
     container_name: pdf-ingestion-api
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "8053:8001"
     env_file:
       - .env
     environment:
@@ -30,7 +30,7 @@ services:
       - HF_HOME=/ki4kmu_data/.hf_cache
       - EMBEDDING_MODEL_PATH=/ki4kmu_data/embedding-model
     volumes:
-      - ./prompts/captioner.md:/app/prompts/captioner.md:ro
+      - ./prompts/captioner.md:/prompts/captioner.md:ro
       - ki4kmu_data:/ki4kmu_data
     depends_on:
       - chromadb
