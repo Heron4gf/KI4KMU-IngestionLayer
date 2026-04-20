@@ -3,6 +3,8 @@ from app.utils.files import read_file, image_to_b64
 from openai import OpenAI
 from PIL import Image
 
+CAPTIONING_PROMPT = read_file(CAPTIONER_PROMPT_PATH)
+
 class Captioner:
     def __init__(
         self,
@@ -29,7 +31,7 @@ class Captioner:
                         },
                         {
                             "type": "text",
-                            "text": read_file(CAPTIONER_PROMPT_PATH),
+                            "text": CAPTIONING_PROMPT,
                         },
                     ],
                 }

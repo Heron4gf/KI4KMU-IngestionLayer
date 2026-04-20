@@ -1,28 +1,33 @@
 import logging
+import os
 from typing import List
 
 import torch
+from huggingface_hub import snapshot_download
 from sentence_transformers import SentenceTransformer
 
-from app.core.config import TEXT_MODEL, HF_TOKEN
+from app.core.config import TEXT_MODEL, HF_TOKEN, EMBEDDING_MODEL_PATH
 
 logger = logging.getLogger(__name__)
 
+WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
+
+def _model_is_cached(path: str) -> bool:
+    return any(os.path.isfile(os.path.join(path, f)) for f in WEIGHT_FILES)
+
 
 class TextEmbedder:
-    """
-    Text embedding service using SentenceTransformer.
-    
-    This class is responsible solely for generating text embeddings.
-    It does not handle any image processing or ML inference beyond embeddings.
-    """
     def __init__(self, model_id: str = TEXT_MODEL):
-        if HF_TOKEN:
-            logger.info(f"Using HF_TOKEN for model download: {model_id}")
-            self._model = SentenceTransformer(model_id, trust_remote_code=True, token=HF_TOKEN)
-        else:
-            logger.info(f"Downloading model without HF_TOKEN: {model_id}")
-            self._model = SentenceTransformer(model_id, trust_remote_code=True)
+        if not _model_is_cached(EMBEDDING_MODEL_PATH):
+            logger.info(f"Downloading model {model_id} to {EMBEDDING_MODEL_PATH}")
+            snapshot_download(
+                repo_id=model_id,
+                local_dir=EMBEDDING_MODEL_PATH,
+                token=HF_TOKEN or None,
+            )
+
+        logger.info(f"Loading model from {EMBEDDING_MODEL_PATH}")
+        self._model = SentenceTransformer(EMBEDDING_MODEL_PATH, trust_remote_code=True)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model.to(self._device)
 

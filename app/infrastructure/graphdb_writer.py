@@ -93,12 +93,16 @@ def _class_uri(class_name: str) -> str:
 def insert_chunk(chunk_id: str, metadata: dict) -> None:
     chunk_uri = _uri(chunk_id)
     meta_triples = "\n    ".join(f"{chunk_uri} {_uri(k)} {_literal(v)} ." for k, v in metadata.items() if v is not None)
+    
+    # TODO: Check if it's a good practice or should we use something like PreparedStatement even tho I know this is not SQL
     query = f"{PREFIXES}\nINSERT DATA {{\n    {chunk_uri} rdf:type pi:Chunk .\n    {chunk_uri} rdfs:label \"{chunk_id}\" .\n    {meta_triples}\n}}"
     _run_update(query)
 
 def _merge_mention(existing_uri_full: str, chunk_id: str) -> None:
     chunk_uri = _uri(chunk_id)
     existing_uri = f"<{existing_uri_full}>"
+
+    # TODO: Same here
     query = f"{PREFIXES}\nINSERT DATA {{\n    {existing_uri} pi:mentionedIn {chunk_uri} .\n}}"
     _run_update(query)
 

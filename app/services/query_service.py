@@ -61,6 +61,8 @@ def hybrid_search(
     for chunk_idx, chunk_data in enumerate(related_chunks):
         # Simple score: 1.0 / (1.0 + rank_position)
         rank_position = chunk_idx + 1
+
+        # TODO: let's recalculate the graph score with a proper formula
         graph_score = 1.0 / (1.0 + rank_position)
         
         item = QueryResultItem(
