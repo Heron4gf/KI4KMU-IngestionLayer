@@ -33,17 +33,17 @@ services:
       - ./prompts/captioner.md:/prompts/captioner.md:ro
       - ki4kmu_data:/ki4kmu_data
     depends_on:
-      - chromadb
+      - chromadb-ingestion
       - unstructured
-      - graphdb
+      - graphdb-ingestion
     networks:
       - backend
 
 
 
-  chromadb:
+  chromadb-ingestion:
     image: chromadb/chroma:latest
-    container_name: chromadb
+    container_name: chromadb-ingestion
     restart: unless-stopped
     volumes:
       - ki4kmu_data:/ki4kmu_data
@@ -68,9 +68,9 @@ services:
 
 
 
-  graphdb:
+  graphdb-ingestion:
     image: ontotext/graphdb:${GRAPHDB_VERSION}
-    container_name: graphdb
+    container_name: graphdb-ingestion
     restart: unless-stopped
     ports:
       - "${GRAPHDB_PORT}:7200"
