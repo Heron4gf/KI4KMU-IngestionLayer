@@ -19,6 +19,14 @@ def document_already_ingested(pdf_hash: str) -> bool:
     res = collection.get(where={"pdf_hash": pdf_hash}, limit=1)
     return len(res.get("ids", [])) > 0
 
+def delete_document_chunks(document_id: str) -> None:
+    collection = get_chroma_collection()
+    results = collection.get(where={"document_id": document_id})
+    ids = results.get("ids", [])
+    if ids:
+        collection.delete(ids=ids)
+        logger.info("[CHROMA] Rolled back %d chunks for document %s", len(ids), document_id)
+
 def _build_element_metadata(
     element: Dict[str, Any],
     document_id: str,
@@ -148,7 +156,7 @@ def store_chunks_in_chroma(
         return 0
 
     collection = get_chroma_collection()
-    collection.add(
+    collection.upsert(
         ids=payload["ids"],
         embeddings=payload["embeddings"],
         documents=payload["documents"],
