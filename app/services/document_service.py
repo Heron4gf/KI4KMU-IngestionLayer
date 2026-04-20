@@ -7,7 +7,7 @@ import httpx
 
 from app.services.unstructured_service import chunk_pdf_with_unstructured
 from app.services.image_service import process_images_pipeline
-from app.infrastructure.chroma_repository import document_already_ingested, store_chunks_in_chroma
+from app.infrastructure.chroma_repository import document_already_ingested, store_chunks_in_chroma, delete_document_chunks
 from app.infrastructure.graphdb_writer import insert_chunk, insert_typed_entity, insert_relationship
 from app.infrastructure.job_store import JobStage, update_job
 from app.core.config import LANGEXTRACT_URL
@@ -75,12 +75,16 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
     logger.info("[SERVICE] Stored %d chunks in Chroma", num_stored)
 
     await _stage(JobStage.EXTRACTING_ENTITIES)
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        tasks = [_process_single_chunk(client, i, element, document_id) for i, element in enumerate(text_elements)]
-        if tasks:
-            await asyncio.gather(*tasks)
-
-    await _stage(JobStage.WRITING_GRAPHDB)
-    logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            tasks = [_process_single_chunk(client, i, element, document_id) for i, element in enumerate(text_elements)]
+            if tasks:
+                await asyncio.gather(*tasks)
+        await _stage(JobStage.WRITING_GRAPHDB)
+        logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
+    except Exception as e:
+        logger.error("[SERVICE] GraphDB write failed, rolling back Chroma for document %s: %s", document_id, e)
+        await asyncio.to_thread(delete_document_chunks, document_id)
+        raise
 
     return num_stored
