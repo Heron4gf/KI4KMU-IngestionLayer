@@ -1,4 +1,3 @@
-import json
 import os
 import logging
 from pathlib import Path
@@ -14,10 +13,10 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-API_KEY = os.environ["LANGEXTRACT_API_KEY"]
-MODEL_ID = os.environ["LANGEXTRACT_MODEL_ID"]
-BASE_URL = os.environ.get("LANGEXTRACT_BASE_URL")  # None = default OpenAI
-PROMPT_PATH = os.environ.get("LANGEXTRACT_PROMPT_PATH", "/prompts/section_extract.md")
+API_KEY = os.getenv("EXTRACTOR_API_KEY")
+MODEL_ID = os.getenv("EXTRACTOR_MODEL_ID")
+BASE_URL = os.getenv("EXTRACTOR_BASE_URL")
+PROMPT_PATH = os.getenv("EXTRACTOR_PROMPT_PATH", "/prompts/extract.md")
 
 
 def _load_system_prompt() -> str:
