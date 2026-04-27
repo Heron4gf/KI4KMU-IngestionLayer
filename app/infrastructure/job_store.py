@@ -16,7 +16,7 @@ class JobStage(str, Enum):
     CHUNKING_TEXT = "chunking_text"
     EXTRACTING_IMAGES = "extracting_images"
     STORING_CHUNKS = "storing_chunks"
-    EXTRACTING_ENTITIES = "extracting_entities"
+    EXTRACTING_SECTIONS = "extracting_sections"
     WRITING_GRAPHDB = "writing_graphdb"
     COMPLETED = "completed"
     FAILED = "failed"

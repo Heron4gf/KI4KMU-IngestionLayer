@@ -1,0 +1,95 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix ki4kmu: <http://ki4kmu.fhnw.ch/ontology#> .
+
+<http://ki4kmu.fhnw.ch/ontology>
+    a owl:Ontology ;
+    rdfs:label "KI-4-KMU Ontology"@en ;
+    rdfs:comment "Ontology for the KI-4-KMU document ingestion and knowledge graph pipeline."@en ;
+    owl:versionInfo "1.0.0" .
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+
+ki4kmu:Document a owl:Class ;
+    rdfs:label "Document"@en ;
+    rdfs:comment "An ingested PDF document."@en .
+
+ki4kmu:Chunk a owl:Class ;
+    rdfs:label "Chunk"@en ;
+    rdfs:comment "A text chunk extracted from a document."@en .
+
+ki4kmu:Section a owl:Class ;
+    rdfs:label "Section"@en ;
+    rdfs:comment "A logical section identified within a document."@en .
+
+ki4kmu:Text a owl:Class ;
+    rdfs:label "Text Section"@en ;
+    rdfs:comment "A prose/content section."@en ;
+    rdfs:subClassOf ki4kmu:Section .
+
+ki4kmu:Image a owl:Class ;
+    rdfs:label "Image"@en ;
+    rdfs:comment "An image extracted from a document, or an image-typed section."@en ;
+    rdfs:subClassOf ki4kmu:Section .
+
+# ---------------------------------------------------------------------------
+# Object Properties
+# ---------------------------------------------------------------------------
+
+ki4kmu:belongsTo a owl:ObjectProperty ;
+    rdfs:label "belongs to"@en ;
+    rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Image) ] ;
+    rdfs:range ki4kmu:Document .
+
+ki4kmu:isContained a owl:ObjectProperty ;
+    rdfs:label "is contained in"@en ;
+    rdfs:domain ki4kmu:Chunk ;
+    rdfs:range ki4kmu:Section .
+
+# ---------------------------------------------------------------------------
+# Datatype Properties
+# ---------------------------------------------------------------------------
+
+ki4kmu:document_id a owl:DatatypeProperty ;
+    rdfs:label "document ID"@en ;
+    rdfs:domain ki4kmu:Document ;
+    rdfs:range xsd:string .
+
+ki4kmu:pdf_hash a owl:DatatypeProperty ;
+    rdfs:label "PDF hash"@en ;
+    rdfs:domain ki4kmu:Document ;
+    rdfs:range xsd:string .
+
+ki4kmu:chunk_index a owl:DatatypeProperty ;
+    rdfs:label "chunk index"@en ;
+    rdfs:domain ki4kmu:Chunk ;
+    rdfs:range xsd:integer .
+
+ki4kmu:text a owl:DatatypeProperty ;
+    rdfs:label "text"@en ;
+    rdfs:domain ki4kmu:Chunk ;
+    rdfs:range xsd:string .
+
+ki4kmu:page_number a owl:DatatypeProperty ;
+    rdfs:label "page number"@en ;
+    rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Image) ] ;
+    rdfs:range xsd:integer .
+
+ki4kmu:section_id a owl:DatatypeProperty ;
+    rdfs:label "section ID"@en ;
+    rdfs:domain ki4kmu:Section ;
+    rdfs:range xsd:string .
+
+ki4kmu:section_enumeration a owl:DatatypeProperty ;
+    rdfs:label "section enumeration"@en ;
+    rdfs:domain ki4kmu:Section ;
+    rdfs:range xsd:string .
+
+ki4kmu:image_base64 a owl:DatatypeProperty ;
+    rdfs:label "image base64"@en ;
+    rdfs:domain ki4kmu:Image ;
+    rdfs:range xsd:string .

@@ -26,18 +26,18 @@ TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://pdf-ingestion/ontology/")
+BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://ki4kmu.fhnw.ch/ontology#")
 GRAPHDB_URL = os.getenv("GRAPHDB_URL", "http://graphdb:7200")
 GRAPHDB_REPO= os.getenv("GRAPHDB_REPOSITORY", "pdf-ingestion")
 
 PREFIXES = f"""
-PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-PREFIX pi:   <{BASE_NS}>
+PREFIX rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd:    <http://www.w3.org/2001/XMLSchema#>
+PREFIX ki4kmu: <{BASE_NS}>
 """
 
-LANGEXTRACT_URL = os.getenv("LANGEXTRACT_URL", "http://langextract:8003")
+SECTION_EXTRACTOR_URL = os.getenv("SECTION_EXTRACTOR_URL", "http://section-extractor:8003")
 
 UNSTRUCTURED_READ_TIMEOUT = float(os.getenv("UNSTRUCTURED_READ_TIMEOUT", "120.0"))
 UNSTRUCTURED_SPLIT_PAGE_SIZE = int(os.getenv("UNSTRUCTURED_SPLIT_PAGE_SIZE", "10"))

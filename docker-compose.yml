@@ -20,7 +20,7 @@ services:
       - CAPTIONING_AI_API_KEY=${CAPTIONING_AI_API_KEY}
       - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS}
       - CAPTIONER_PROMPT_PATH=${CAPTIONER_PROMPT_PATH}
-      - LANGEXTRACT_URL=http://langextract:8003
+      - SECTION_EXTRACTOR_URL=http://section-extractor:8003
       - GRAPHDB_URL=${GRAPHDB_URL}
       - GRAPHDB_REPOSITORY=${GRAPHDB_REPOSITORY}
       - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS}
@@ -87,12 +87,12 @@ services:
       - backend
 
 
-  langextract:
-    build: ./langextract_service
-    container_name: langextract
+  section-extractor:
+    build: ./section_extractor
+    container_name: section-extractor
     restart: unless-stopped
     ports:
-      - "${LANGEXTRACT_PORT}:8003"
+      - "${SECTION_EXTRACTOR_PORT}:8003"
     env_file:
       - .env
     environment:
