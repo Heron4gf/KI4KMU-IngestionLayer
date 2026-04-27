@@ -69,6 +69,8 @@ class TestInsertChunk:
 
         call_args = _mock_sparql.setQuery.call_args[0][0]
         assert "doc_doc1" in call_args
+        # Both chunk and document URIs should use angle-bracket full IRIs
+        assert "<http://ki4kmu.fhnw.ch/ontology#" in call_args
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +128,7 @@ class TestInsertOrMergeSection:
 
         section = {
             "section_id": "figure_1",
+            "label": "Figure 1",
             "section_enumeration": "",
             "section_type": "Image",
             "confidence": 0.90,
@@ -155,6 +158,7 @@ class TestInsertOrMergeSection:
 
         section = {
             "section_id": "methods",
+            "label": "2 Methods",
             "section_enumeration": "2",
             "section_type": "Text",
             "confidence": 0.95,

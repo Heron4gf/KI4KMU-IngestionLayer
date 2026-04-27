@@ -21,13 +21,12 @@ def app_client():
     os.environ.setdefault("LANGEXTRACT_MODEL_ID", "test-model")
     os.environ.setdefault("LANGEXTRACT_PROMPT_PATH", "/dev/null")
 
-    # Mock the OpenAI client at module level
-    with patch("server.OpenAI") as mock_openai_cls:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-
-        # Mock _load_system_prompt to avoid file read
-        with patch("server._load_system_prompt", return_value="Test system prompt"):
+    # Import server module first
+    import server
+    
+    # Mock _load_system_prompt to avoid file read, then patch the module-level client
+    with patch("server._load_system_prompt", return_value="Test system prompt"):
+        with patch.object(server, "client", new=MagicMock()) as mock_client:
             from fastapi.testclient import TestClient
             from server import app
             yield TestClient(app), mock_client
@@ -42,11 +41,12 @@ class TestExtractSections:
         client, mock_openai = app_client
 
         # Mock the structured output parse() path
-        from section_extractor.models import SectionExtractionResponse, SectionExtraction
+        from models import SectionExtractionResponse, SectionExtraction
         mock_parsed = SectionExtractionResponse(
             sections=[
                 SectionExtraction(
                     section_id="introduction",
+                    label="1.1 Introduction",
                     section_enumeration="1.1",
                     section_type="Text",
                     confidence=0.95,

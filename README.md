@@ -28,12 +28,32 @@ A FastAPI-based REST API for ingesting PDF documents and performing semantic sea
 ## Graph Database Integration
 The system includes a GraphDB integration that stores extracted entities and their relationships. The graph database provides structured knowledge representation alongside the vector database for semantic search.
 
-### Graph Database Schema
-The system uses a custom ontology defined in `ontology/ki_kmu_schema.yaml` that includes:
+### Ontology
 
-- **Entity Types**: Organizations, People, Locations, Technologies, Projects, etc.
-- **Relationships**: Mentions, collaborations, affiliations, and other semantic connections
-- **Attributes**: Entity properties and metadata
+The system uses a custom RDF/OWL ontology defined in `ontology/ki4kmu.ttl` to structure knowledge about documents:
+
+**Classes:**
+- `ki4kmu:Document` — An ingested PDF document
+- `ki4kmu:Chunk` — A text chunk extracted from a document
+- `ki4kmu:Section` — A logical section identified within a document
+  - `ki4kmu:Text` — Prose/content section
+  - `ki4kmu:Image` — An image extracted from a document
+
+**Relationships:**
+- `ki4kmu:belongsTo` — Links chunks/images to their parent document
+- `ki4kmu:isContained` — Links chunks to the section they belong to
+
+**Properties:**
+- `ki4kmu:document_id` — Unique document identifier
+- `ki4kmu:pdf_hash` — MD5 hash for duplicate detection
+- `ki4kmu:chunk_index` — Position of chunk in document
+- `ki4kmu:text` — The actual text content
+- `ki4kmu:page_number` — Source page number
+- `ki4kmu:section_id` — Identifier for the section type
+- `ki4kmu:section_enumeration` — Hierarchical section number (e.g., "1.2.3")
+- `ki4kmu:image_base64` — Base64-encoded image data
+
+This ontology enables SPARQL queries for complex relationship-based searches across the knowledge graph.
 
 ### Example Graph Result
 Here's an example of the graph structure generated from document processing:
@@ -80,6 +100,18 @@ This unified architecture provides:
 - [Python 3.11](https://www.python.org/downloads/release/python-3110/) or higher
 - [pip](https://pypi.org/project/pip/) (Python package manager)
 - [Docker](https://www.docker.com/) and Docker Compose
+
+## Testing
+
+Run unit and slice tests:
+```bash
+py -m pytest
+```
+
+Run all tests including smoke tests (requires Docker services):
+```bash
+py -m pytest --run-smoke
+```
 
 ## Installation
 

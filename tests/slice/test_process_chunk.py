@@ -38,12 +38,14 @@ async def test_process_chunk_writes_chunk_and_sections(mock_graphdb):
         "sections": [
             {
                 "section_id": "introduction",
+                "label": "1.1 Introduction",
                 "section_enumeration": "1.1",
                 "section_type": "Text",
                 "confidence": 0.95,
             },
             {
                 "section_id": "overview",
+                "label": "1.2 Overview",
                 "section_enumeration": "1.2",
                 "section_type": "Text",
                 "confidence": 0.88,
@@ -68,11 +70,11 @@ async def test_process_chunk_writes_chunk_and_sections(mock_graphdb):
     assert mock_graphdb["insert_or_merge_section"].call_count == 2
     calls = mock_graphdb["insert_or_merge_section"].call_args_list
     assert calls[0] == call(
-        {"section_id": "introduction", "section_enumeration": "1.1", "section_type": "Text", "confidence": 0.95},
+        {"section_id": "introduction", "label": "1.1 Introduction", "section_enumeration": "1.1", "section_type": "Text", "confidence": 0.95},
         "doc-abc_chunk_0",
     )
     assert calls[1] == call(
-        {"section_id": "overview", "section_enumeration": "1.2", "section_type": "Text", "confidence": 0.88},
+        {"section_id": "overview", "label": "1.2 Overview", "section_enumeration": "1.2", "section_type": "Text", "confidence": 0.88},
         "doc-abc_chunk_0",
     )
 

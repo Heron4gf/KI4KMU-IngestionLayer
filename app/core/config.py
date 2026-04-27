@@ -16,7 +16,7 @@ CAPTIONING_AI_BASE_URL = os.getenv("CAPTIONING_AI_BASE_URL", "http://host.docker
 CAPTIONING_AI_MODEL = os.getenv("CAPTIONING_AI_MODEL", "lmstudio-community/Qwen3.5-0.8B-GGUF")
 CAPTIONING_AI_API_KEY = os.getenv("CAPTIONING_AI_API_KEY", "dummy")
 CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS", "256"))
-CAPTIONER_PROMPT_PATH = os.getenv("CAPTIONER_PROMPT_PATH", "prompts/describe_image.md")
+CAPTIONER_PROMPT_PATH = os.getenv("CAPTIONER_PROMPT_PATH", "prompts/captioner.md")
 
 CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
