@@ -3,10 +3,7 @@ from typing import List
 
 from app.models.api_models import QueryResultItem
 from app.infrastructure.chroma_repository import semantic_search
-from app.infrastructure.graphdb_reader import (
-    get_entities_from_chunk,
-    get_related_chunks_from_entities,
-)
+from app.infrastructure.graphdb_reader import get_section_for_chunk, get_chunks_for_section
 
 logger = logging.getLogger(__name__)
 
@@ -19,87 +16,78 @@ def hybrid_search(
 ) -> List[QueryResultItem]:
     """
     Perform a hybrid search combining vector similarity and graph traversal.
-    
+
     1. Vector search in ChromaDB
-    2. Graph traversal via entities to find related chunks
-    3. Merge and deduplicate results
+    2. For each vector result, look up its section in GraphDB
+    3. Find other chunks in the same section (graph expansion)
+    4. Merge and deduplicate results
     """
     # Step 1: Vector search
     vector_results = semantic_search(query, top_k=max_vector_results)
     logger.info("[QUERY] Vector search returned %d results", len(vector_results))
-    
+
     if not vector_results:
         return []
-    
-    # Collect all entity URIs from vector results
-    all_entity_uris: List[str] = []
-    for result in vector_results:
-        entities = get_entities_from_chunk(result.id)
-        all_entity_uris.extend([e["uri"] for e in entities])
-    
-    # Deduplicate entity URIs
-    all_entity_uris = list(set(all_entity_uris))
-    logger.info("[QUERY] Found %d unique entities from vector results", len(all_entity_uris))
-    
-    if not all_entity_uris:
-        # No entities found, just return vector results
-        return vector_results[:max_results_total]
-    
-    # Step 2: Graph traversal - find related chunks (once, excluding all seed chunks)
-    seed_chunk_ids = [r.id for r in vector_results]
-    all_exclude_ids = seed_chunk_ids  # Pass all to exclude in one query
-    
-    graph_results: List[QueryResultItem] = []
-    
-    # Call graph traversal once with all seed chunk IDs to exclude
-    related_chunks = get_related_chunks_from_entities(
-        entity_uris=all_entity_uris,
-        exclude_chunk_ids=all_exclude_ids,
-        limit=max_graph_results,
-    )
-    
-    for chunk_idx, chunk_data in enumerate(related_chunks):
-        # Simple score: 1.0 / (1.0 + rank_position)
-        rank_position = chunk_idx + 1
 
-        # TODO: let's recalculate the graph score with a proper formula
-        graph_score = 1.0 / (1.0 + rank_position)
-        
-        item = QueryResultItem(
-            id=chunk_data["chunk_id"],
-            text=chunk_data["text"],
-            score=graph_score,
-            metadata={"chunk_id": chunk_data["chunk_id"]},
-            source="graph",
-        )
-        graph_results.append(item)
-    
-    logger.info("[QUERY] Graph traversal returned %d results", len(graph_results))
-    
-    # Step 3: Deduplicate - keep vector results if chunk_id matches
+    # Step 2: Graph expansion — find sibling chunks via section containment
     vector_chunk_ids = {r.id for r in vector_results}
-    deduplicated_graph = [
-        r for r in graph_results
-        if r.id not in vector_chunk_ids
-    ]
-    
-    # Step 4: Merge and sort by score
-    # Vector results: convert Chroma L2 distance to similarity using 1/(1+distance)
-    # Graph results: already using 1/(1+rank_position)
+    graph_results: List[QueryResultItem] = []
+    seen_section_ids: set[str] = set()
+
+    for result in vector_results:
+        try:
+            section_id = get_section_for_chunk(result.id)
+        except Exception as e:
+            logger.warning("[QUERY] Graph lookup failed for chunk %s: %s", result.id, e)
+            continue
+
+        if not section_id or section_id in seen_section_ids:
+            continue
+        seen_section_ids.add(section_id)
+
+        try:
+            section_chunks = get_chunks_for_section(section_id)
+        except Exception as e:
+            logger.warning("[QUERY] Section chunks lookup failed for %s: %s", section_id, e)
+            continue
+
+        for chunk_data in section_chunks:
+            if chunk_data["chunk_id"] in vector_chunk_ids:
+                continue  # Skip seeds
+            rank_position = len(graph_results) + 1
+            graph_score = 1.0 / (1.0 + rank_position)
+            item = QueryResultItem(
+                id=chunk_data["chunk_id"],
+                text=chunk_data["text"],
+                score=graph_score,
+                metadata={"chunk_id": chunk_data["chunk_id"], "section_id": section_id},
+                source="graph",
+            )
+            graph_results.append(item)
+
+            if len(graph_results) >= max_graph_results:
+                break
+        if len(graph_results) >= max_graph_results:
+            break
+
+    logger.info("[QUERY] Graph traversal returned %d results", len(graph_results))
+
+    # Step 3: Convert Chroma L2 distance to similarity
     for r in vector_results:
-        r.score = 1.0 / (1.0 + r.score)  # Convert distance to similarity
-    
-    merged_results = vector_results + deduplicated_graph
+        r.score = 1.0 / (1.0 + r.score)
+
+    # Step 4: Merge and sort by score
+    merged_results = vector_results + graph_results
     merged_results.sort(key=lambda x: x.score, reverse=True)
-    
+
     # Step 5: Cap at max_results_total
     final_results = merged_results[:max_results_total]
-    
+
     logger.info(
-        "[QUERY] Hybrid search complete: %d vector, %d graph (after dedup), %d final",
+        "[QUERY] Hybrid search complete: %d vector, %d graph, %d final",
         len(vector_results),
-        len(deduplicated_graph),
+        len(graph_results),
         len(final_results),
     )
-    
+
     return final_results

@@ -1,3 +1,0 @@
-langextract[openai]
-fastapi 
-uvicorn[standard]

@@ -8,6 +8,7 @@ from app.core.config import (
     UNSTRUCTURED_OVERLAP,
 )
 from app.infrastructure.unstructured_client import _call_unstructured
+from app.utils.text_cleaning import fix_extraction_artifacts, is_garbage_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +23,20 @@ async def chunk_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
         overlap=UNSTRUCTURED_OVERLAP,
     )
 
-    text_elements = [e for e in elements if e.get("type") != "Image"]
-    logger.info(f"[UNSTRUCTURED] Extracted {len(text_elements)} text chunks")
+    text_elements = []
+    for e in elements:
+        if e.get("type") == "Image":
+            continue
+        text = e.get("text", "")
+        cleaned = fix_extraction_artifacts(text)
+        if is_garbage_chunk(cleaned):
+            logger.debug(f"[UNSTRUCTURED] Dropping garbage chunk: {repr(cleaned[:60])}")
+            continue
+        logger.debug(f"[UNSTRUCTURED] Chunk {cleaned}")
+        e["text"] = cleaned
+        text_elements.append(e)
 
+    logger.info(f"[UNSTRUCTURED] Extracted {len(text_elements)} text chunks after cleaning")
     return text_elements
 
 
