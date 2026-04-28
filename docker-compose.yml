@@ -8,14 +8,13 @@ services:
     env_file:
       - .env
     environment:
-      - LOG_LEVEL=WARNING # skip the INFO logs
       # Database and Infrastructure Hosts/Ports
       - CHROMA_HOST=${CHROMA_HOST:-chromadb-ingestion}
       - CHROMA_PORT=${CHROMA_PORT:-8000}
       - CHROMA_COLLECTION=${CHROMA_COLLECTION:-documents}
       - GRAPHDB_URL=${GRAPHDB_URL:-http://graphdb-ingestion:7200}
       - GRAPHDB_REPOSITORY=${GRAPHDB_REPOSITORY:-rag-repo}
-      - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS:-http://ki4kmu.fhnw.ch/ontology}
+      - GRAPHDB_BASE_NS=${GRAPHDB_BASE_NS:-http://ki4kmu.fhnw.ch/ontology#}
       - GRAPHDB_USER=${GRAPHDB_USER:-}
       - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD:-}
       

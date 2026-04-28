@@ -26,7 +26,7 @@ TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://ki4kmu.fhnw.ch/ontology")
+BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://ki4kmu.fhnw.ch/ontology#")
 GRAPHDB_URL = os.getenv("GRAPHDB_URL", "http://graphdb-ingestion:7200")
 GRAPHDB_REPO= os.getenv("GRAPHDB_REPOSITORY", "rag-repo")
 
