@@ -18,12 +18,6 @@ services:
       - GRAPHDB_USER=${GRAPHDB_USER:-}
       - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD:-}
       
-      # Unstructured Parser Config
-      - UNSTRUCTURED_URL=${UNSTRUCTURED_URL:-http://unstructured:8000/general/v0/general}
-      - UNSTRUCTURED_CHUNKING_STRATEGY=${UNSTRUCTURED_CHUNKING_STRATEGY:-by_title}
-      - UNSTRUCTURED_MAX_CHARACTERS=${UNSTRUCTURED_MAX_CHARACTERS:-512}
-      - UNSTRUCTURED_OVERLAP=${UNSTRUCTURED_OVERLAP:-30}
-      
       # AI Captioning Config
       - CAPTIONING_AI_BASE_URL=${CAPTIONING_AI_BASE_URL}
       - CAPTIONING_AI_MODEL=${CAPTIONING_AI_MODEL}
@@ -41,7 +35,6 @@ services:
       - ki4kmu_data:/ki4kmu_data
     depends_on:
       - chromadb-ingestion
-      - unstructured
       - graphdb-ingestion
     networks:
       - backend
@@ -57,15 +50,6 @@ services:
       - PERSIST_DIRECTORY=/ki4kmu_data/chroma-data
     ports:
       - "8000:8000"
-    networks:
-      - backend
-
-  unstructured:
-    image: robwilkes/unstructured-api:latest
-    container_name: unstructured
-    restart: unless-stopped
-    ports:
-      - "8002:8000"
     networks:
       - backend
 
