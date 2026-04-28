@@ -21,7 +21,7 @@ def app_client():
 
     # Mock _load_system_prompt to avoid file read, then patch the module-level chain
     with patch("server._load_system_prompt", return_value="Test system prompt"):
-        with patch.object(server, "chain", new=MagicMock()) as mock_chain:
+        with patch.object(server, "structured_chain", new=MagicMock()) as mock_chain:
             from fastapi.testclient import TestClient
             from server import app
             yield TestClient(app), mock_chain
@@ -42,7 +42,7 @@ class TestExtractSections:
                 )
             ]
         )
-        mock_chain.invoke.return_value = mock_result
+        mock_chain.invoke.return_value = {"parsed": mock_result}
 
         resp = client.post("/extract-sections", json={"text": "1.1 Introduction\nSome content here."})
         assert resp.status_code == 200

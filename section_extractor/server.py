@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from models import ExtractRequest, SectionExtractionResponse
 
@@ -33,7 +33,7 @@ llm = ChatOpenAI(
     api_key=API_KEY,
     base_url=BASE_URL,
 )
-chain = llm.with_structured_output(SectionExtractionResponse)
+structured_chain = llm.with_structured_output(SectionExtractionResponse, include_raw=True)
 
 
 @asynccontextmanager
@@ -56,15 +56,14 @@ def extract_sections(req: ExtractRequest):
         return SectionExtractionResponse(sections=[])
 
     system_prompt = _load_system_prompt()
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{text}"),
-    ])
 
     try:
-        result = chain.invoke({"text": req.text})
-        if result is not None:
-            return result
+        result = structured_chain.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=req.text),
+        ])
+        if result.get("parsed") is not None:
+            return result["parsed"]
     except Exception as e:
         logger.warning("Section extraction failed: %s — returning empty", e)
 
