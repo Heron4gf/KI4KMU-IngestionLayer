@@ -1,6 +1,8 @@
 import logging
 from typing import List
 
+from langfuse import observe
+
 from app.models.api_models import QueryResultItem
 from app.infrastructure.chroma_repository import semantic_search
 from app.infrastructure.graphdb_reader import get_section_for_chunk, get_chunks_for_section
@@ -8,6 +10,7 @@ from app.infrastructure.graphdb_reader import get_section_for_chunk, get_chunks_
 logger = logging.getLogger(__name__)
 
 
+@observe(name="hybrid_search", as_type="retriever", capture_input=True, capture_output=True)
 def hybrid_search(
     query: str,
     max_vector_results: int = 3,

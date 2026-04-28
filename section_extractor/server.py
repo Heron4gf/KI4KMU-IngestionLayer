@@ -4,8 +4,9 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from openai import OpenAI
 from dotenv import load_dotenv
+from langfuse import observe
+from langfuse.openai import openai
 
 from models import ExtractRequest, SectionExtractionResponse
 
@@ -18,6 +19,11 @@ MODEL_ID = os.getenv("EXTRACTOR_MODEL_ID")
 BASE_URL = os.getenv("EXTRACTOR_BASE_URL")
 PROMPT_PATH = os.getenv("EXTRACTOR_PROMPT_PATH", "/prompts/extract.md")
 
+# Langfuse Configuration
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
 
 def _load_system_prompt() -> str:
     path = Path(PROMPT_PATH)
@@ -26,7 +32,7 @@ def _load_system_prompt() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-client = OpenAI(
+client = openai.OpenAI(
     api_key=API_KEY,
     base_url=BASE_URL,
 )
@@ -47,6 +53,7 @@ app = FastAPI(title="Section Extractor Service", lifespan=lifespan)
 
 
 @app.post("/extract-sections", response_model=SectionExtractionResponse)
+@observe(name="section_extraction", as_type="generation", capture_input=True, capture_output=True)
 def extract_sections(req: ExtractRequest):
     if not req.text or not req.text.strip():
         return SectionExtractionResponse(sections=[])

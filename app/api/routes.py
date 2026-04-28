@@ -4,6 +4,7 @@ from typing import Dict
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
+from langfuse import observe
 
 from app.models.api_models import QueryRequest, QueryResponse
 from app.models.job_models import JobAccepted, JobStatusResponse
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 v1_router = APIRouter(prefix="/v1")
 
 
+@observe(name="run_ingestion", as_type="chain", capture_input=True, capture_output=True)
 async def _run_ingestion(job_id: str, file_bytes: bytes, filename: str) -> None:
     import tempfile
     import pathlib
@@ -73,6 +75,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
 
 
 @v1_router.post("/query", response_model=QueryResponse, status_code=status.HTTP_200_OK)
+@observe(name="query_documents", as_type="span", capture_input=True, capture_output=True)
 async def query_documents(body: QueryRequest) -> QueryResponse:
     query = body.query.strip()
     if not query:

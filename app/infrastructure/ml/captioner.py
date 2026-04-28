@@ -1,9 +1,11 @@
+from langfuse.openai import openai
+
 from app.core.config import CAPTIONING_AI_BASE_URL, CAPTIONING_AI_MODEL, CAPTIONING_AI_API_KEY, CAPTION_MAX_TOKENS, CAPTIONER_PROMPT_PATH
 from app.utils.files import read_file, image_to_b64
-from openai import OpenAI
 from PIL import Image
 
 CAPTIONING_PROMPT = read_file(CAPTIONER_PROMPT_PATH)
+
 
 class Captioner:
     def __init__(
@@ -13,7 +15,7 @@ class Captioner:
         api_key: str = CAPTIONING_AI_API_KEY,
         max_tokens: int = CAPTION_MAX_TOKENS,
     ):
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
+        self._client = openai.OpenAI(base_url=base_url, api_key=api_key)
         self._model = model
         self._max_tokens = max_tokens
 

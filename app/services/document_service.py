@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+from langfuse import observe
 
 from app.services.unstructured_service import chunk_pdf_with_unstructured
 from app.services.image_service import process_images_pipeline
@@ -39,6 +40,7 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
         await asyncio.to_thread(insert_or_merge_section, section, chunk_id)
 
 
+@observe(name="document_processing", as_type="chain", capture_input=True, capture_output=True)
 async def process_document(pdf_path: Path, document_id: str, job_id: Optional[str] = None) -> int:
     logger.info("[SERVICE] Starting document processing for: %s", pdf_path.name)
 
