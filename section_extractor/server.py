@@ -5,8 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from dotenv import load_dotenv
-from langfuse import observe
-from langfuse.openai import openai
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 
 from models import ExtractRequest, SectionExtractionResponse
 
@@ -19,11 +19,6 @@ MODEL_ID = os.getenv("EXTRACTOR_MODEL_ID")
 BASE_URL = os.getenv("EXTRACTOR_BASE_URL")
 PROMPT_PATH = os.getenv("EXTRACTOR_PROMPT_PATH", "/prompts/extract.md")
 
-# Langfuse Configuration
-LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
-LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-
 
 def _load_system_prompt() -> str:
     path = Path(PROMPT_PATH)
@@ -32,10 +27,13 @@ def _load_system_prompt() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-client = openai.OpenAI(
+# LangChain setup with structured output
+llm = ChatOpenAI(
+    model=MODEL_ID,
     api_key=API_KEY,
     base_url=BASE_URL,
 )
+chain = llm.with_structured_output(SectionExtractionResponse)
 
 
 @asynccontextmanager
@@ -53,48 +51,24 @@ app = FastAPI(title="Section Extractor Service", lifespan=lifespan)
 
 
 @app.post("/extract-sections", response_model=SectionExtractionResponse)
-@observe(name="section_extraction", as_type="generation", capture_input=True, capture_output=True)
 def extract_sections(req: ExtractRequest):
     if not req.text or not req.text.strip():
         return SectionExtractionResponse(sections=[])
 
     system_prompt = _load_system_prompt()
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{text}"),
+    ])
 
-    # Primary path: try structured output via parse()
     try:
-        response = client.beta.chat.completions.parse(
-            model=MODEL_ID,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": req.text},
-            ],
-            response_format=SectionExtractionResponse,
-        )
-        result: SectionExtractionResponse = response.choices[0].message.parsed
+        result = chain.invoke({"text": req.text})
         if result is not None:
             return result
-    except (AttributeError, NotImplementedError):
-        # parse() not supported by this provider — fall back below
-        logger.info("Structured output parse() not available, falling back to json_object mode")
     except Exception as e:
-        logger.warning("Structured output parse() failed, falling back: %s", e)
+        logger.warning("Section extraction failed: %s — returning empty", e)
 
-    # Fallback path: json_object mode + manual validation
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_ID,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": req.text},
-            ],
-            response_format={"type": "json_object"},
-        )
-        content = response.choices[0].message.content
-        result = SectionExtractionResponse.model_validate_json(content)
-        return result
-    except Exception as e:
-        logger.warning("Section extraction fallback failed: %s — returning empty", e)
-        return SectionExtractionResponse(sections=[])
+    return SectionExtractionResponse(sections=[])
 
 
 @app.get("/health")

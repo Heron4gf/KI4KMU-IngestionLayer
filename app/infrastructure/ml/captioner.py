@@ -1,4 +1,5 @@
-from langfuse.openai import openai
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 
 from app.core.config import CAPTIONING_AI_BASE_URL, CAPTIONING_AI_MODEL, CAPTIONING_AI_API_KEY, CAPTION_MAX_TOKENS, CAPTIONER_PROMPT_PATH
 from app.utils.files import read_file, image_to_b64
@@ -15,32 +16,23 @@ class Captioner:
         api_key: str = CAPTIONING_AI_API_KEY,
         max_tokens: int = CAPTION_MAX_TOKENS,
     ):
-        self._client = openai.OpenAI(base_url=base_url, api_key=api_key)
-        self._model = model
-        self._max_tokens = max_tokens
+        self._llm = ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            max_tokens=max_tokens,
+            temperature=0.1,
+        )
 
     def caption(self, image: Image.Image) -> str:
         b64 = image_to_b64(image)
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                        },
-                        {
-                            "type": "text",
-                            "text": CAPTIONING_PROMPT,
-                        },
-                    ],
-                }
-            ],
-            max_tokens=self._max_tokens,
-            temperature=0.1,
-        )
-        return response.choices[0].message.content.strip()
+        response = self._llm.invoke([
+            HumanMessage(content=[
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                {"type": "text", "text": CAPTIONING_PROMPT},
+            ])
+        ])
+        return response.content.strip()
+
 
 captioner = Captioner()
