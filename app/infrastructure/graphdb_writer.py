@@ -5,7 +5,8 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 import requests
-from SPARQLWrapper import SPARQLWrapper, JSON, POST, DIGEST
+from requests.auth import HTTPDigestAuth
+from SPARQLWrapper import SPARQLWrapper, JSON, DIGEST
 
 from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
 
@@ -13,26 +14,18 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Lazy SPARQL client
+# SPARQL write via requests (avoids SPARQLWrapper 415 content-type bug)
 # ---------------------------------------------------------------------------
 
-_SPARQL_WRITE = None
-
-
-def _get_write_client():
-    global _SPARQL_WRITE
-    if _SPARQL_WRITE is None:
-        endpoint = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}/statements"
-        sparql = SPARQLWrapper(endpoint)
-        sparql.setMethod(POST)
-        sparql.setReturnFormat(JSON)
-        user = os.getenv("GRAPHDB_USER")
-        password = os.getenv("GRAPHDB_PASSWORD")
-        if user and password:
-            sparql.setHTTPAuth(DIGEST)
-            sparql.setCredentials(user, password)
-        _SPARQL_WRITE = sparql
-    return _SPARQL_WRITE
+def _run_update(query: str) -> None:
+    url = f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}/statements"
+    headers = {"Content-Type": "application/sparql-update"}
+    user = os.getenv("GRAPHDB_USER")
+    password = os.getenv("GRAPHDB_PASSWORD")
+    auth = HTTPDigestAuth(user, password) if user and password else None
+    resp = requests.post(url, data=query.encode("utf-8"), headers=headers, auth=auth, timeout=30)
+    if not resp.ok:
+        raise RuntimeError(f"GraphDB update failed ({resp.status_code}): {resp.text[:200]}")
 
 
 # ---------------------------------------------------------------------------
@@ -46,14 +39,9 @@ def _canonical_id(raw):
     return re.sub(r"_+", "_", slug)
 
 
-def _run_update(query):
-    client = _get_write_client()
-    client.setQuery(query)
-    client.query()
-
-
 def _uri(local):
     return f"<{BASE_NS}{quote(str(local), safe='')}>"
+
 
 def _literal(value):
     if isinstance(value, bool):

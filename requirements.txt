@@ -16,6 +16,7 @@ linkml
 thefuzz
 pypdf
 python-dotenv
+pymupdf4llm
 
 # Testing
 pytest
