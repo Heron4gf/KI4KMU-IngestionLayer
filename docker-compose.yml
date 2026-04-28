@@ -8,6 +8,7 @@ services:
     env_file:
       - .env
     environment:
+      - LOG_LEVEL=WARNING # skip the INFO logs
       # Database and Infrastructure Hosts/Ports
       - CHROMA_HOST=${CHROMA_HOST:-chromadb-ingestion}
       - CHROMA_PORT=${CHROMA_PORT:-8000}

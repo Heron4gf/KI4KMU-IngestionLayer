@@ -19,7 +19,7 @@ def extract_text_chunks(pdf_path: Path, max_chars: int = 1500) -> List[Dict[str,
         text = fix_extraction_artifacts(page["text"].strip())
         if not text:
             continue
-        page_num = page["metadata"]["page"]
+        page_num = page["page"]
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         buf = ""
         for para in paragraphs:
