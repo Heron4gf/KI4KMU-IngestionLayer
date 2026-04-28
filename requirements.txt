@@ -17,6 +17,7 @@ thefuzz
 pypdf
 python-dotenv
 pymupdf4llm
+langfuse
 
 # Testing
 pytest

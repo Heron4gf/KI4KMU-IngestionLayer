@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from PIL import Image
+from langfuse import observe
 
 from app.services.unstructured_service import extract_images_with_unstructured
 from app.infrastructure.ml.captioner import captioner
@@ -13,6 +14,7 @@ from app.infrastructure.ml.captioner import captioner
 logger = logging.getLogger(__name__)
 
 
+@observe(name="image_processing_pipeline", as_type="chain", capture_input=True, capture_output=True)
 async def process_images_pipeline(pdf_path: Path) -> List[Dict[str, Any]]:
     image_elements = await extract_images_with_unstructured(pdf_path)
 

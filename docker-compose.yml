@@ -8,6 +8,11 @@ services:
     env_file:
       - .env
     environment:
+      # Langfuse Tracing Configuration
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      
       # Database and Infrastructure Hosts/Ports
       - CHROMA_HOST=${CHROMA_HOST:-chromadb-ingestion}
       - CHROMA_PORT=${CHROMA_PORT:-8000}
@@ -79,6 +84,9 @@ services:
       - EXTRACTOR_API_KEY=${EXTRACTOR_API_KEY}
       - EXTRACTOR_MODEL_ID=${EXTRACTOR_MODEL_ID}
       - EXTRACTOR_PROMPT_PATH=${EXTRACTOR_PROMPT_PATH:-/prompts/extract.md}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
     volumes:
       - ./prompts:/prompts:ro
     networks:
