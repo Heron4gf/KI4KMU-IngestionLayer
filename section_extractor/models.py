@@ -11,14 +11,24 @@ class Tag(BaseModel):
 
 
 class SectionExtraction(BaseModel):
+    """Model for LLM output - does NOT include UUID to avoid confusion."""
     section_id: str
     label: str
     texts: List[Text]
     tags: List[Tag]
 
 
+class SectionExtractionWithUUID(BaseModel):
+    """Internal model for storage - includes server-generated UUID."""
+    section_id: str
+    label: str
+    texts: List[Text]
+    tags: List[Tag]
+    uuid: str
+
+
 class SectionExtractionResponse(BaseModel):
-    sections: List[SectionExtraction]
+    sections: List[SectionExtractionWithUUID]
 
 
 class ExtractRequest(BaseModel):

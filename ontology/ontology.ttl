@@ -91,6 +91,11 @@ ki4kmu:section_id a owl:DatatypeProperty ;
     rdfs:domain ki4kmu:Section ;
     rdfs:range xsd:string .
 
+ki4kmu:section_uuid a owl:DatatypeProperty ;
+    rdfs:label "section UUID"@en ;
+    rdfs:domain ki4kmu:Section ;
+    rdfs:range xsd:string .
+
 ki4kmu:image_base64 a owl:DatatypeProperty ;
     rdfs:label "image base64"@en ;
     rdfs:domain ki4kmu:Image ;

@@ -114,11 +114,14 @@ def insert_image(image_id, document_id, image_base64, section_uri, page_number=N
 
 
 def insert_or_merge_section(section, chunk_id):
-    section_id = _canonical_id(section.get("section_id", ""))
-    if not section_id:
+    """Insert or merge a section into the graph. Uses section UUID as the primary identifier."""
+    section_uuid = section.get("uuid")
+    if not section_uuid:
+        logger.warning("[GRAPHDB] Section missing UUID, skipping: %s", section.get("section_id"))
         return
 
-    section_uri = _uri(section_id)
+    section_id = _canonical_id(section.get("section_id", ""))
+    section_uri = _uri(section_uuid)  # Use UUID as URI
     chunk_uri = _uri(chunk_id)
     section_type = section.get("section_type", "Text")
     co_type = "ki4kmu:Image" if section_type == "Image" else "ki4kmu:Text"
@@ -139,6 +142,7 @@ def insert_or_merge_section(section, chunk_id):
         section_type=co_type,
         label=label,
         section_id=section_id,
+        section_uuid=section_uuid,
     )
     _run_update(section_query)
 
@@ -147,7 +151,7 @@ def insert_or_merge_section(section, chunk_id):
     for idx, text_obj in enumerate(texts):
         text_content = text_obj.get("content", "")
         if text_content:
-            text_id = f"{section_id}_text_{idx}"
+            text_id = f"{section_uuid}_text_{idx}"
             text_uri = _uri(text_id)
             text_query = load_and_parse(
                 "insert_text.sparql",

@@ -1,4 +1,5 @@
 import os
+import uuid
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from models import ExtractRequest, SectionExtractionResponse
+from models import ExtractRequest, SectionExtraction, SectionExtractionWithUUID, SectionExtractionResponse
 
 load_dotenv()
 
@@ -27,7 +28,7 @@ def _load_system_prompt() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-# LangChain setup with structured output
+# LangChain setup with structured output - uses clean model without UUID
 llm = ChatOpenAI(
     model=MODEL_ID,
     api_key=API_KEY,
@@ -63,7 +64,19 @@ def extract_sections(req: ExtractRequest):
             HumanMessage(content=req.text),
         ])
         if result.get("parsed") is not None:
-            return result["parsed"]
+            # Convert LLM output to response with UUIDs
+            llm_sections = result["parsed"].sections
+            sections_with_uuid = [
+                SectionExtractionWithUUID(
+                    section_id=s.section_id,
+                    label=s.label,
+                    texts=s.texts,
+                    tags=s.tags,
+                    uuid=str(uuid.uuid4()),
+                )
+                for s in llm_sections
+            ]
+            return SectionExtractionResponse(sections=sections_with_uuid)
     except Exception as e:
         logger.warning("Section extraction failed: %s — returning empty", e)
 
