@@ -1,0 +1,7 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{doc_uri}} rdf:type ki4kmu:Document .
+    {{doc_uri}} rdfs:label {{document_id}} .
+    {{doc_uri}} ki4kmu:document_id {{document_id}} .
+    {{doc_uri}} ki4kmu:pdf_hash {{pdf_hash}} .
+}

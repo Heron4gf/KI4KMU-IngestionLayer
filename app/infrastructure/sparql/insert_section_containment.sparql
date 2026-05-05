@@ -1,0 +1,4 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{chunk_uri}} ki4kmu:isContained {{section_uri}} .
+}

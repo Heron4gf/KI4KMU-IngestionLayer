@@ -1,0 +1,8 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{image_uri}} rdf:type ki4kmu:Image .
+    {{image_uri}} rdfs:label {{image_id}} .
+    {{image_uri}} ki4kmu:belongsTo {{doc_uri}} .
+    {{image_uri}} ki4kmu:image_base64 {{image_base64}} .
+{{page_triple}}
+}

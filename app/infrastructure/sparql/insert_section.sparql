@@ -1,0 +1,8 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{section_uri}} rdf:type ki4kmu:Section .
+    {{section_uri}} rdf:type {{section_type}} .
+    {{section_uri}} rdfs:label {{label}} .
+    {{section_uri}} ki4kmu:section_id {{section_id}} .
+    {{section_uri}} ki4kmu:section_enumeration {{enumeration}} .
+}

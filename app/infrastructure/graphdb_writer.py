@@ -1,7 +1,7 @@
 import os
-import re
 import logging
 import unicodedata
+import re
 from pathlib import Path
 from urllib.parse import quote
 import requests
@@ -9,6 +9,7 @@ from requests.auth import HTTPDigestAuth
 from SPARQLWrapper import SPARQLWrapper, JSON, DIGEST
 
 from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
+from app.infrastructure.sparql import load_and_parse
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +61,13 @@ def _literal(value):
 
 def insert_document(document_id, pdf_hash):
     doc_uri = _uri(f"doc_{document_id}")
-    query = f"""{PREFIXES}
-INSERT DATA {{
-    {doc_uri} rdf:type ki4kmu:Document .
-    {doc_uri} rdfs:label {_literal(document_id)} .
-    {doc_uri} ki4kmu:document_id {_literal(document_id)} .
-    {doc_uri} ki4kmu:pdf_hash {_literal(pdf_hash)} .
-}}"""
+    query = load_and_parse(
+        "insert_document.sparql",
+        PREFIXES=PREFIXES,
+        doc_uri=doc_uri,
+        document_id=document_id,
+        pdf_hash=pdf_hash,
+    )
     _run_update(query)
 
 
@@ -78,15 +79,16 @@ def insert_chunk(chunk_id, document_id, text, chunk_index, page_number=None):
     if page_number is not None:
         page_triple = f"    {chunk_uri} ki4kmu:page_number {_literal(page_number)} ."
 
-    query = f"""{PREFIXES}
-INSERT DATA {{
-    {chunk_uri} rdf:type ki4kmu:Chunk .
-    {chunk_uri} rdfs:label {_literal(chunk_id)} .
-    {chunk_uri} ki4kmu:belongsTo {doc_uri} .
-    {chunk_uri} ki4kmu:chunk_index {_literal(chunk_index)} .
-    {chunk_uri} ki4kmu:text {_literal(text)} .
-{page_triple}
-}}"""
+    query = load_and_parse(
+        "insert_chunk.sparql",
+        PREFIXES=PREFIXES,
+        chunk_uri=chunk_uri,
+        chunk_id=chunk_id,
+        doc_uri=doc_uri,
+        chunk_index=chunk_index,
+        text=text,
+        page_triple=page_triple,
+    )
     _run_update(query)
 
 
@@ -98,14 +100,15 @@ def insert_image(image_id, document_id, image_base64, page_number=None):
     if page_number is not None:
         page_triple = f"    {image_uri} ki4kmu:page_number {_literal(page_number)} ."
 
-    query = f"""{PREFIXES}
-INSERT DATA {{
-    {image_uri} rdf:type ki4kmu:Image .
-    {image_uri} rdfs:label {_literal(image_id)} .
-    {image_uri} ki4kmu:belongsTo {doc_uri} .
-    {image_uri} ki4kmu:image_base64 {_literal(image_base64)} .
-{page_triple}
-}}"""
+    query = load_and_parse(
+        "insert_image.sparql",
+        PREFIXES=PREFIXES,
+        image_uri=image_uri,
+        image_id=image_id,
+        doc_uri=doc_uri,
+        image_base64=image_base64,
+        page_triple=page_triple,
+    )
     _run_update(query)
 
 
@@ -121,20 +124,23 @@ def insert_or_merge_section(section, chunk_id):
     enumeration = section.get("section_enumeration", "")
     label = section.get("label", section_id)
 
-    containment_query = f"""{PREFIXES}
-INSERT DATA {{
-    {chunk_uri} ki4kmu:isContained {section_uri} .
-}}"""
+    containment_query = load_and_parse(
+        "insert_section_containment.sparql",
+        PREFIXES=PREFIXES,
+        chunk_uri=chunk_uri,
+        section_uri=section_uri,
+    )
     _run_update(containment_query)
 
-    section_query = f"""{PREFIXES}
-INSERT DATA {{
-    {section_uri} rdf:type ki4kmu:Section .
-    {section_uri} rdf:type {co_type} .
-    {section_uri} rdfs:label {_literal(label)} .
-    {section_uri} ki4kmu:section_id {_literal(section_id)} .
-    {section_uri} ki4kmu:section_enumeration {_literal(enumeration)} .
-}}"""
+    section_query = load_and_parse(
+        "insert_section.sparql",
+        PREFIXES=PREFIXES,
+        section_uri=section_uri,
+        section_type=co_type,
+        label=label,
+        section_id=section_id,
+        enumeration=enumeration,
+    )
     _run_update(section_query)
 
 
@@ -143,11 +149,14 @@ INSERT DATA {{
 # ---------------------------------------------------------------------------
 
 ONTOLOGY_GRAPH_URI = "<http://ki4kmu.fhnw.ch/ontology>"
-ONTOLOGY_FILE_PATH = Path(__file__).resolve().parent.parent.parent / "ontology" / "ki4kmu.ttl"
+ONTOLOGY_FILE_PATH = Path(__file__).resolve().parent.parent.parent / "ontology" / "ontology.ttl"
 
 
 def ensure_ontology_loaded():
-    check_query = f"ASK WHERE {{ GRAPH {ONTOLOGY_GRAPH_URI} {{ ?s ?p ?o }} }}"
+    check_query = load_and_parse(
+        "check_ontology_loaded.sparql",
+        graph_uri=ONTOLOGY_GRAPH_URI,
+    )
     try:
         check_sparql = SPARQLWrapper(f"{GRAPHDB_URL}/repositories/{GRAPHDB_REPO}")
         check_sparql.setReturnFormat(JSON)

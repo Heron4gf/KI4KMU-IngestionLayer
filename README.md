@@ -30,7 +30,7 @@ The system includes a GraphDB integration that stores extracted entities and the
 
 ### Ontology
 
-The system uses a custom RDF/OWL ontology defined in `ontology/ki4kmu.ttl` to structure knowledge about documents:
+The system uses a custom RDF/OWL ontology defined in `ontology/ontology.ttl` to structure knowledge about documents:
 
 **Classes:**
 - `ki4kmu:Document` — An ingested PDF document
