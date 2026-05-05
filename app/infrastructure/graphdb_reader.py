@@ -1,7 +1,10 @@
 import logging
 import os
+from typing import List
+
 from SPARQLWrapper import SPARQLWrapper, JSON, DIGEST
 from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
+from app.infrastructure.sparql import load_and_parse
 
 logger = logging.getLogger(__name__)
 
@@ -117,3 +120,53 @@ LIMIT 1
         section_uri = bindings[0]["section"]["value"]
         return section_uri.replace(BASE_NS, "")
     return None
+
+
+def search_chunks_by_tags(keywords: List[str]) -> List[dict]:
+    """
+    Search for chunks via tag matching on sections.
+    Returns list of dicts with keys: chunk_id, text, chunk_index, section_id
+    """
+    all_chunks = []
+    seen = set()
+    for keyword in keywords:
+        query = load_and_parse("search_tags.sparql", PREFIXES=PREFIXES, keyword=keyword)
+        bindings = _execute_and_parse(query)
+        for row in bindings:
+            chunk_uri = row["chunk"]["value"]
+            chunk_id = chunk_uri.replace(BASE_NS, "")
+            if chunk_id in seen:
+                continue
+            seen.add(chunk_id)
+            all_chunks.append({
+                "chunk_id": chunk_id,
+                "text": row["text"]["value"],
+                "chunk_index": int(row["index"]["value"]),
+                "section_id": row["section"]["value"].replace(BASE_NS, ""),
+            })
+    return all_chunks
+
+
+def search_chunks_by_keyphrases(keywords: List[str]) -> List[dict]:
+    """
+    Search for chunks via keyphrase matching (Text -> Keyphrase -> Section -> Chunk).
+    Returns list of dicts with keys: chunk_id, text, chunk_index, section_id
+    """
+    all_chunks = []
+    seen = set()
+    for keyword in keywords:
+        query = load_and_parse("search_keyphrases.sparql", PREFIXES=PREFIXES, keyword=keyword)
+        bindings = _execute_and_parse(query)
+        for row in bindings:
+            chunk_uri = row["chunk"]["value"]
+            chunk_id = chunk_uri.replace(BASE_NS, "")
+            if chunk_id in seen:
+                continue
+            seen.add(chunk_id)
+            all_chunks.append({
+                "chunk_id": chunk_id,
+                "text": row["text"]["value"],
+                "chunk_index": int(row["index"]["value"]),
+                "section_id": row["section"]["value"].replace(BASE_NS, ""),
+            })
+    return all_chunks

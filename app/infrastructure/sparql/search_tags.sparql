@@ -1,0 +1,16 @@
+{{PREFIXES}}
+
+SELECT DISTINCT ?section ?chunk ?text ?index WHERE {
+    ?tag rdf:type ki4kmu:Tag ;
+         rdfs:label ?tagLabel .
+    FILTER(CONTAINS(LCASE(STR(?tagLabel)), LCASE("{{keyword}}")))
+    
+    ?section ki4kmu:hasTag ?tag ;
+             rdf:type ki4kmu:Section .
+    
+    ?chunk ki4kmu:isContained ?section ;
+           rdf:type ki4kmu:Chunk ;
+           ki4kmu:text ?text ;
+           ki4kmu:chunk_index ?index .
+}
+ORDER BY ?index

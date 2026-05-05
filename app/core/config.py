@@ -29,6 +29,9 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
 
+RERANK_MODEL = os.getenv("RERANK_MODEL", "perplexity-ai/pplx-embed-v1-4b")
+RERANK_MODEL_PATH = os.getenv("RERANK_MODEL_PATH", "./models/reranker")
+
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 BASE_NS     = os.getenv("GRAPHDB_BASE_NS", "http://ki4kmu.fhnw.ch/ontology#")

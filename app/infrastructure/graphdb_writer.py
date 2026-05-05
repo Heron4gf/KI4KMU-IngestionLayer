@@ -10,6 +10,7 @@ from SPARQLWrapper import SPARQLWrapper, JSON, DIGEST
 
 from app.core.config import GRAPHDB_URL, GRAPHDB_REPO, PREFIXES, BASE_NS
 from app.infrastructure.sparql import load_and_parse
+from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ def insert_or_merge_section(section, chunk_id):
     )
     _run_update(section_query)
 
-    # Insert Text instances
+    # Insert Text instances + Keyphrases
     texts = section.get("texts", [])
     for idx, text_obj in enumerate(texts):
         text_content = text_obj.get("content", "")
@@ -162,6 +163,20 @@ def insert_or_merge_section(section, chunk_id):
                 section_uri=section_uri,
             )
             _run_update(text_query)
+
+            # Insert keyphrases linked to this Text
+            keyphrases = extract_keyphrases(text_content)
+            for kp in keyphrases:
+                kp_id = _canonical_id(kp)
+                kp_uri = _uri(f"kp_{section_uuid}_{idx}_{kp_id}")
+                kp_query = load_and_parse(
+                    "insert_keyphrase.sparql",
+                    PREFIXES=PREFIXES,
+                    text_uri=text_uri,
+                    keyphrase_uri=kp_uri,
+                    keyphrase_label=_literal(kp),
+                )
+                _run_update(kp_query)
 
     # Insert Tag instances
     tags = section.get("tags", [])

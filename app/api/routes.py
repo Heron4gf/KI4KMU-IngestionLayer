@@ -83,7 +83,7 @@ async def query_documents(body: QueryRequest) -> QueryResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Query must not be empty.",
         )
-    results = hybrid_search(
+    results = await hybrid_search(
         query,
         body.max_vector_results,
         body.max_graph_results,

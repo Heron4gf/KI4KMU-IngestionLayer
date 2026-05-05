@@ -1,0 +1,7 @@
+{{PREFIXES}}
+
+INSERT DATA {
+    {{text_uri}} ki4kmu:hasKeyphrase {{keyphrase_uri}} .
+    {{keyphrase_uri}} rdf:type ki4kmu:Keyphrase ;
+        rdfs:label {{keyphrase_label}} .
+}

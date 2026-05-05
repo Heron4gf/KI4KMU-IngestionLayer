@@ -99,6 +99,9 @@ Desktop.ini
 chroma-data/
 graphdb-data/
 
+# Downloaded models
+models/
+
 # Uploaded files
 uploads/
 

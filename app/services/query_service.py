@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List
 
@@ -5,91 +6,198 @@ from langfuse import observe
 
 from app.models.api_models import QueryResultItem
 from app.infrastructure.chroma_repository import semantic_search
-from app.infrastructure.graphdb_reader import get_section_for_chunk, get_chunks_for_section
+from app.infrastructure.graphdb_reader import (
+    get_chunks_for_section,
+    search_chunks_by_tags,
+    search_chunks_by_keyphrases,
+)
+from app.infrastructure.ml.rerank_embedder import rerank_embedder
+from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
 
+# Internal multiplier: fetch more results than user requests for better reranking
+_VECTOR_FETCH_MULTIPLIER = 2
+_GRAPH_FETCH_MULTIPLIER = 2
+
+
+async def _vector_search_sections(query: str, top_k: int) -> List[QueryResultItem]:
+    """Search ChromaDB for sections (runs in thread pool)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, semantic_search, query, top_k * _VECTOR_FETCH_MULTIPLIER
+    )
+
+
+async def _graph_keyword_search_chunks(query: str, top_k: int) -> List[dict]:
+    """Search graph for chunks via tag/keyphrase keyword matching."""
+    keywords = extract_keyphrases(query)
+    if not keywords:
+        return []
+
+    loop = asyncio.get_event_loop()
+    tag_chunks = await loop.run_in_executor(
+        None, search_chunks_by_tags, keywords
+    )
+    kp_chunks = await loop.run_in_executor(
+        None, search_chunks_by_keyphrases, keywords
+    )
+
+    # Merge and deduplicate
+    seen = set()
+    all_chunks = []
+    for chunk in tag_chunks + kp_chunks:
+        cid = chunk["chunk_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        all_chunks.append(chunk)
+        if len(all_chunks) >= top_k * _GRAPH_FETCH_MULTIPLIER:
+            break
+
+    return all_chunks
+
+
+async def _resolve_vector_sections_to_chunks(
+    vector_results: List[QueryResultItem],
+) -> List[dict]:
+    """For each vector section result, fetch its chunks from the graph."""
+    all_chunks = []
+    seen_sections = set()
+    seen_chunks = set()
+
+    for result in vector_results:
+        section_id = result.metadata.get("section_uuid") or result.id
+        if not section_id or section_id in seen_sections:
+            continue
+        seen_sections.add(section_id)
+
+        try:
+            chunks = get_chunks_for_section(section_id)
+        except Exception as e:
+            logger.warning("[QUERY] Failed to get chunks for section %s: %s", section_id, e)
+            continue
+
+        for chunk in chunks:
+            cid = chunk["chunk_id"]
+            if cid in seen_chunks:
+                continue
+            seen_chunks.add(cid)
+            all_chunks.append({
+                "chunk_id": cid,
+                "text": chunk["text"],
+                "section_id": section_id,
+                "source": "vector",
+            })
+
+    return all_chunks
+
+
+def _merge_chunks(
+    vector_chunks: List[dict],
+    graph_chunks: List[dict],
+) -> List[dict]:
+    """Merge vector and graph chunks, deduplicating by chunk_id."""
+    seen = set()
+    merged = []
+
+    for chunk in vector_chunks + graph_chunks:
+        cid = chunk["chunk_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        merged.append(chunk)
+
+    return merged
+
+
+def _rerank_chunks(query: str, chunks: List[dict], top_k: int) -> List[QueryResultItem]:
+    """Rerank chunks using the 4B reranker model and return top_k."""
+    if not chunks:
+        return []
+
+    texts = [c["text"] for c in chunks]
+
+    # Embed query and all chunk texts
+    query_embeddings = rerank_embedder.embed_texts([query])
+    chunk_embeddings = rerank_embedder.embed_texts(texts)
+
+    # Compute similarities
+    scores = rerank_embedder.compute_similarities(
+        query_embeddings[0], chunk_embeddings
+    )
+
+    # Attach scores and sort
+    scored = []
+    for chunk, score in zip(chunks, scores):
+        scored.append({**chunk, "score": score})
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+
+    # Build final results
+    results = []
+    for item in scored[:top_k]:
+        results.append(
+            QueryResultItem(
+                id=item["chunk_id"],
+                text=item["text"],
+                score=item["score"],
+                metadata={
+                    "chunk_id": item["chunk_id"],
+                    "section_id": item.get("section_id", ""),
+                    "source": item.get("source", "reranked"),
+                },
+                source=item.get("source", "reranked"),
+            )
+        )
+
+    return results
+
 
 @observe(name="hybrid_search", as_type="retriever", capture_input=True, capture_output=True)
-def hybrid_search(
+async def hybrid_search(
     query: str,
     max_vector_results: int = 3,
     max_graph_results: int = 2,
     max_results_total: int = 5,
 ) -> List[QueryResultItem]:
     """
-    Perform a hybrid search combining vector similarity and graph traversal.
+    Perform a hybrid search combining vector similarity and graph keyword matching.
 
-    1. Vector search in ChromaDB
-    2. For each vector result, look up its section in GraphDB
-    3. Find other chunks in the same section (graph expansion)
-    4. Merge and deduplicate results
+    1. Parallel: vector search in ChromaDB (returns sections) + graph keyword search (returns chunks)
+    2. Resolve vector sections to chunks via graph traversal
+    3. Merge and deduplicate all chunks
+    4. Rerank chunks using the 4B embedding model
+    5. Return top_k chunks
     """
-    # Step 1: Vector search
-    vector_results = semantic_search(query, top_k=max_vector_results)
-    logger.info("[QUERY] Vector search returned %d results", len(vector_results))
+    # Step 1: Parallel search
+    vector_task = _vector_search_sections(query, max_vector_results)
+    graph_task = _graph_keyword_search_chunks(query, max_graph_results)
 
-    if not vector_results:
+    vector_results, graph_chunks = await asyncio.gather(vector_task, graph_task)
+    logger.info(
+        "[QUERY] Vector sections: %d, Graph chunks: %d",
+        len(vector_results),
+        len(graph_chunks),
+    )
+
+    # Step 2: Resolve vector sections to chunks
+    vector_chunks = await _resolve_vector_sections_to_chunks(vector_results)
+    logger.info("[QUERY] Vector resolved to %d chunks", len(vector_chunks))
+
+    # Step 3: Merge and deduplicate
+    all_chunks = _merge_chunks(vector_chunks, graph_chunks)
+    logger.info("[QUERY] Merged unique chunks: %d", len(all_chunks))
+
+    if not all_chunks:
         return []
 
-    # Step 2: Graph expansion — find sibling chunks via section containment
-    vector_chunk_ids = {r.id for r in vector_results}
-    graph_results: List[QueryResultItem] = []
-    seen_section_ids: set[str] = set()
-
-    for result in vector_results:
-        try:
-            section_id = get_section_for_chunk(result.id)
-        except Exception as e:
-            logger.warning("[QUERY] Graph lookup failed for chunk %s: %s", result.id, e)
-            continue
-
-        if not section_id or section_id in seen_section_ids:
-            continue
-        seen_section_ids.add(section_id)
-
-        try:
-            section_chunks = get_chunks_for_section(section_id)
-        except Exception as e:
-            logger.warning("[QUERY] Section chunks lookup failed for %s: %s", section_id, e)
-            continue
-
-        for chunk_data in section_chunks:
-            if chunk_data["chunk_id"] in vector_chunk_ids:
-                continue  # Skip seeds
-            rank_position = len(graph_results) + 1
-            graph_score = 1.0 / (1.0 + rank_position)
-            item = QueryResultItem(
-                id=chunk_data["chunk_id"],
-                text=chunk_data["text"],
-                score=graph_score,
-                metadata={"chunk_id": chunk_data["chunk_id"], "section_id": section_id},
-                source="graph",
-            )
-            graph_results.append(item)
-
-            if len(graph_results) >= max_graph_results:
-                break
-        if len(graph_results) >= max_graph_results:
-            break
-
-    logger.info("[QUERY] Graph traversal returned %d results", len(graph_results))
-
-    # Step 3: Convert Chroma L2 distance to similarity
-    for r in vector_results:
-        r.score = 1.0 / (1.0 + r.score)
-
-    # Step 4: Merge and sort by score
-    merged_results = vector_results + graph_results
-    merged_results.sort(key=lambda x: x.score, reverse=True)
-
-    # Step 5: Cap at max_results_total
-    final_results = merged_results[:max_results_total]
-
+    # Step 4: Rerank using 4B model
+    final_results = _rerank_chunks(query, all_chunks, max_results_total)
     logger.info(
-        "[QUERY] Hybrid search complete: %d vector, %d graph, %d final",
-        len(vector_results),
-        len(graph_results),
+        "[QUERY] Hybrid search complete: %d vector chunks, %d graph chunks, %d final",
+        len(vector_chunks),
+        len(graph_chunks),
         len(final_results),
     )
 

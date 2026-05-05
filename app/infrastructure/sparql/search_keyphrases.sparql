@@ -1,0 +1,18 @@
+{{PREFIXES}}
+
+SELECT DISTINCT ?section ?chunk ?text ?index WHERE {
+    ?kp rdf:type ki4kmu:Keyphrase ;
+        rdfs:label ?kpLabel .
+    FILTER(CONTAINS(LCASE(STR(?kpLabel)), LCASE("{{keyword}}")))
+    
+    ?textNode ki4kmu:hasKeyphrase ?kp ;
+              ki4kmu:isContained ?section .
+    
+    ?section rdf:type ki4kmu:Section .
+    
+    ?chunk ki4kmu:isContained ?section ;
+           rdf:type ki4kmu:Chunk ;
+           ki4kmu:text ?text ;
+           ki4kmu:chunk_index ?index .
+}
+ORDER BY ?index
