@@ -123,18 +123,20 @@ def insert_or_merge_section(section, chunk_id):
 
     section_id = _canonical_id(section.get("section_id", ""))
     section_uri = _uri(section_uuid)  # Use UUID as URI
-    chunk_uri = _uri(chunk_id)
     section_type = section.get("section_type", "Text")
     co_type = "ki4kmu:Image" if section_type == "Image" else "ki4kmu:Text"
     label = section.get("label", section_id)
 
-    containment_query = load_and_parse(
-        "insert_section_containment.sparql",
-        PREFIXES=PREFIXES,
-        chunk_uri=chunk_uri,
-        section_uri=section_uri,
-    )
-    _run_update(containment_query)
+    # Only insert containment triple if chunk_id is provided (not empty for image sections)
+    if chunk_id:
+        chunk_uri = _uri(chunk_id)
+        containment_query = load_and_parse(
+            "insert_section_containment.sparql",
+            PREFIXES=PREFIXES,
+            chunk_uri=chunk_uri,
+            section_uri=section_uri,
+        )
+        _run_update(containment_query)
 
     section_query = load_and_parse(
         "insert_section.sparql",

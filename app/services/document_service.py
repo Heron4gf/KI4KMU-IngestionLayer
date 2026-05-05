@@ -76,37 +76,37 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
     captioned_images = await process_images_pipeline(pdf_path)
     logger.info("[SERVICE] Extracted %d captioned images", len(captioned_images))
 
-    # Create an "Images" section for the document and link all images to it
-    images_section_id = _canonical_id("Images")
-    images_section_uri = _uri(images_section_id)
-    
-    # Insert the Images section (type Image, not Text)
-    images_section = {
-        "section_id": "Images",
-        "section_type": "Image",
-        "label": "Images",
-    }
-    # We don't have a chunk to link to, so we create the section directly
-    section_query = f"""
-{PREFIXES}
-INSERT DATA {{
-    {images_section_uri} rdf:type ki4kmu:Section .
-    {images_section_uri} rdf:type ki4kmu:Image .
-    {images_section_uri} rdfs:label "Images" .
-    {images_section_uri} ki4kmu:section_id "Images" .
-}}
-"""
+    # Write image nodes to GraphDB, each with its own dedicated section
+    # and the caption stored as a Text node within the section
     from app.infrastructure.graphdb_writer import _run_update
-    await asyncio.to_thread(_run_update, section_query)
 
-    # Write image nodes to GraphDB and link them to the Images section
     for idx, image_element in enumerate(captioned_images):
         raw_metadata = image_element.get("metadata") or {}
         image_b64 = raw_metadata.get("image_base64")
         page_number = raw_metadata.get("page_number")
+        caption = image_element.get("text", "") or f"Image {idx}"
+
         if image_b64:
             image_id = f"{document_id}_image_{idx}"
-            await asyncio.to_thread(insert_image, image_id, document_id, image_b64, images_section_uri, page_number)
+            # Create a dedicated section UUID for this image
+            image_section_uuid = f"{document_id}_img_section_{idx}"
+            image_section_uri = _uri(image_section_uuid)
+            image_section_id = f"img_section_{idx}"
+
+            # Create section with caption as Text node
+            image_section = {
+                "uuid": image_section_uuid,
+                "section_id": image_section_id,
+                "section_type": "Image",
+                "label": caption[:80],  # Truncate label for graph storage
+                "texts": [{"content": caption}],  # Store full caption as Text node
+                "tags": [],
+            }
+            # Use an empty chunk_id since images don't belong to a text chunk
+            await asyncio.to_thread(insert_or_merge_section, image_section, "")
+
+            # Insert the image node and link to its dedicated section
+            await asyncio.to_thread(insert_image, image_id, document_id, image_b64, image_section_uri, page_number)
 
     await _stage(JobStage.EXTRACTING_SECTIONS)
     total_sections_stored = 0
