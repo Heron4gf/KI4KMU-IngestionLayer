@@ -38,6 +38,10 @@ ki4kmu:Tag a owl:Class ;
     rdfs:label "Tag"@en ;
     rdfs:comment "A tag that can be assigned to sections for categorization."@en .
 
+ki4kmu:Keyphrase a owl:Class ;
+    rdfs:label "Keyphrase"@en ;
+    rdfs:comment "A lemmatized keyphrase extracted from text for tag matching."@en .
+
 # ---------------------------------------------------------------------------
 # Object Properties
 # ---------------------------------------------------------------------------
@@ -56,6 +60,11 @@ ki4kmu:hasTag a owl:ObjectProperty ;
     rdfs:label "has tag"@en ;
     rdfs:domain ki4kmu:Section ;
     rdfs:range ki4kmu:Tag .
+
+ki4kmu:hasKeyphrase a owl:ObjectProperty ;
+    rdfs:label "has keyphrase"@en ;
+    rdfs:domain ki4kmu:Text ;
+    rdfs:range ki4kmu:Keyphrase .
 
 # ---------------------------------------------------------------------------
 # Datatype Properties
