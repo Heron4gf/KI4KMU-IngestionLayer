@@ -1,0 +1,7 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{text_uri}} rdf:type ki4kmu:Text .
+    {{text_uri}} rdfs:label {{text_id}} .
+    {{text_uri}} ki4kmu:text {{text_content}} .
+    {{text_uri}} ki4kmu:isContained {{section_uri}} .
+}

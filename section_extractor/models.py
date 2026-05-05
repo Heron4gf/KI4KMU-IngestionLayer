@@ -1,17 +1,24 @@
-from typing import Literal
+from typing import List
 from pydantic import BaseModel
+
+
+class Text(BaseModel):
+    content: str
+
+
+class Tag(BaseModel):
+    label: str
 
 
 class SectionExtraction(BaseModel):
     section_id: str
     label: str
-    section_enumeration: str
-    section_type: Literal["Text", "Image"]
-    confidence: float
+    texts: List[Text]
+    tags: List[Tag]
 
 
 class SectionExtractionResponse(BaseModel):
-    sections: list[SectionExtraction]
+    sections: List[SectionExtraction]
 
 
 class ExtractRequest(BaseModel):

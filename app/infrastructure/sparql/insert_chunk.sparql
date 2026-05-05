@@ -1,0 +1,9 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{chunk_uri}} rdf:type ki4kmu:Chunk .
+    {{chunk_uri}} rdfs:label {{chunk_id}} .
+    {{chunk_uri}} ki4kmu:belongsTo {{doc_uri}} .
+    {{chunk_uri}} ki4kmu:chunk_index {{chunk_index}} .
+    {{chunk_uri}} ki4kmu:text {{text}} .
+{{page_triple}}
+}

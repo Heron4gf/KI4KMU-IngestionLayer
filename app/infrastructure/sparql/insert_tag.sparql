@@ -1,0 +1,6 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{tag_uri}} rdf:type ki4kmu:Tag .
+    {{tag_uri}} ki4kmu:tag_label {{tag_label}} .
+    {{section_uri}} ki4kmu:hasTag {{tag_uri}} .
+}

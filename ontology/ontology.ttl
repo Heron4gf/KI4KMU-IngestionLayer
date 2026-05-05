@@ -28,13 +28,15 @@ ki4kmu:Section a owl:Class ;
 
 ki4kmu:Text a owl:Class ;
     rdfs:label "Text Section"@en ;
-    rdfs:comment "A prose/content section."@en ;
-    rdfs:subClassOf ki4kmu:Section .
+    rdfs:comment "A prose/content section."@en .
 
 ki4kmu:Image a owl:Class ;
     rdfs:label "Image"@en ;
-    rdfs:comment "An image extracted from a document, or an image-typed section."@en ;
-    rdfs:subClassOf ki4kmu:Section .
+    rdfs:comment "An image extracted from a document, or an image-typed section."@en .
+
+ki4kmu:Tag a owl:Class ;
+    rdfs:label "Tag"@en ;
+    rdfs:comment "A tag that can be assigned to sections for categorization."@en .
 
 # ---------------------------------------------------------------------------
 # Object Properties
@@ -47,8 +49,13 @@ ki4kmu:belongsTo a owl:ObjectProperty ;
 
 ki4kmu:isContained a owl:ObjectProperty ;
     rdfs:label "is contained in"@en ;
-    rdfs:domain ki4kmu:Chunk ;
+    rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Text ki4kmu:Image) ] ;
     rdfs:range ki4kmu:Section .
+
+ki4kmu:hasTag a owl:ObjectProperty ;
+    rdfs:label "has tag"@en ;
+    rdfs:domain ki4kmu:Section ;
+    rdfs:range ki4kmu:Tag .
 
 # ---------------------------------------------------------------------------
 # Datatype Properties
@@ -84,12 +91,12 @@ ki4kmu:section_id a owl:DatatypeProperty ;
     rdfs:domain ki4kmu:Section ;
     rdfs:range xsd:string .
 
-ki4kmu:section_enumeration a owl:DatatypeProperty ;
-    rdfs:label "section enumeration"@en ;
-    rdfs:domain ki4kmu:Section ;
-    rdfs:range xsd:string .
-
 ki4kmu:image_base64 a owl:DatatypeProperty ;
     rdfs:label "image base64"@en ;
     rdfs:domain ki4kmu:Image ;
+    rdfs:range xsd:string .
+
+ki4kmu:tag_label a owl:DatatypeProperty ;
+    rdfs:label "tag label"@en ;
+    rdfs:domain ki4kmu:Tag ;
     rdfs:range xsd:string .
