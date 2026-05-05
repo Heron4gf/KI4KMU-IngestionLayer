@@ -4,5 +4,6 @@ INSERT DATA {
     {{image_uri}} rdfs:label {{image_id}} .
     {{image_uri}} ki4kmu:belongsTo {{doc_uri}} .
     {{image_uri}} ki4kmu:image_base64 {{image_base64}} .
+    {{image_uri}} ki4kmu:isContained {{section_uri}} .
 {{page_triple}}
 }

@@ -9,9 +9,9 @@ from langfuse import observe
 from app.services.preprocessing_service import chunk_pdf_with_preprocessing
 from app.services.image_service import process_images_pipeline
 from app.infrastructure.chroma_repository import document_already_ingested, store_chunks_in_chroma, delete_document_chunks
-from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section
+from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section, _uri, _canonical_id
 from app.infrastructure.job_store import JobStage, update_job
-from app.core.config import SECTION_EXTRACTOR_URL
+from app.core.config import SECTION_EXTRACTOR_URL, PREFIXES
 from app.utils.files import file_md5
 
 logger = logging.getLogger(__name__)
@@ -73,14 +73,37 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
     )
     logger.info("[SERVICE] Stored %d chunks in Chroma", num_stored)
 
-    # Write image nodes to GraphDB
+    # Create an "Images" section for the document and link all images to it
+    images_section_id = _canonical_id("Images")
+    images_section_uri = _uri(images_section_id)
+    
+    # Insert the Images section (type Image, not Text)
+    images_section = {
+        "section_id": "Images",
+        "section_type": "Image",
+        "label": "Images",
+    }
+    # We don't have a chunk to link to, so we create the section directly
+    section_query = f"""
+{PREFIXES}
+INSERT DATA {{
+    {images_section_uri} rdf:type ki4kmu:Section .
+    {images_section_uri} rdf:type ki4kmu:Image .
+    {images_section_uri} rdfs:label "Images" .
+    {images_section_uri} ki4kmu:section_id "Images" .
+}}
+"""
+    from app.infrastructure.graphdb_writer import _run_update
+    await asyncio.to_thread(_run_update, section_query)
+
+    # Write image nodes to GraphDB and link them to the Images section
     for idx, image_element in enumerate(captioned_images):
         raw_metadata = image_element.get("metadata") or {}
         image_b64 = raw_metadata.get("image_base64")
         page_number = raw_metadata.get("page_number")
         if image_b64:
             image_id = f"{document_id}_image_{idx}"
-            await asyncio.to_thread(insert_image, image_id, document_id, image_b64, page_number)
+            await asyncio.to_thread(insert_image, image_id, document_id, image_b64, images_section_uri, page_number)
 
     await _stage(JobStage.EXTRACTING_SECTIONS)
     try:

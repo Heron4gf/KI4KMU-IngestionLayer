@@ -92,7 +92,7 @@ def insert_chunk(chunk_id, document_id, text, chunk_index, page_number=None):
     _run_update(query)
 
 
-def insert_image(image_id, document_id, image_base64, page_number=None):
+def insert_image(image_id, document_id, image_base64, section_uri, page_number=None):
     image_uri = _uri(image_id)
     doc_uri = _uri(f"doc_{document_id}")
 
@@ -107,6 +107,7 @@ def insert_image(image_id, document_id, image_base64, page_number=None):
         image_id=image_id,
         doc_uri=doc_uri,
         image_base64=image_base64,
+        section_uri=section_uri,
         page_triple=page_triple,
     )
     _run_update(query)
@@ -121,7 +122,6 @@ def insert_or_merge_section(section, chunk_id):
     chunk_uri = _uri(chunk_id)
     section_type = section.get("section_type", "Text")
     co_type = "ki4kmu:Image" if section_type == "Image" else "ki4kmu:Text"
-    enumeration = section.get("section_enumeration", "")
     label = section.get("label", section_id)
 
     containment_query = load_and_parse(
@@ -139,9 +139,69 @@ def insert_or_merge_section(section, chunk_id):
         section_type=co_type,
         label=label,
         section_id=section_id,
-        enumeration=enumeration,
     )
     _run_update(section_query)
+
+    # Insert Text instances
+    texts = section.get("texts", [])
+    for idx, text_obj in enumerate(texts):
+        text_content = text_obj.get("content", "")
+        if text_content:
+            text_id = f"{section_id}_text_{idx}"
+            text_uri = _uri(text_id)
+            text_query = load_and_parse(
+                "insert_text.sparql",
+                PREFIXES=PREFIXES,
+                text_uri=text_uri,
+                text_id=text_id,
+                text_content=_literal(text_content),
+                section_uri=section_uri,
+            )
+            _run_update(text_query)
+
+    # Insert Tag instances
+    tags = section.get("tags", [])
+    for tag_obj in tags:
+        tag_label = tag_obj.get("label", "")
+        if tag_label:
+            tag_id = _canonical_id(tag_label)
+            tag_uri = _uri(tag_id)
+            tag_query = load_and_parse(
+                "insert_tag.sparql",
+                PREFIXES=PREFIXES,
+                tag_uri=tag_uri,
+                tag_id=tag_id,
+                tag_label=_literal(tag_label),
+                section_uri=section_uri,
+            )
+            _run_update(tag_query)
+
+
+def insert_text(text_id, text_content, section_uri):
+    text_uri = _uri(text_id)
+    query = load_and_parse(
+        "insert_text.sparql",
+        PREFIXES=PREFIXES,
+        text_uri=text_uri,
+        text_id=text_id,
+        text_content=_literal(text_content),
+        section_uri=section_uri,
+    )
+    _run_update(query)
+
+
+def insert_tag(tag_label, section_uri):
+    tag_id = _canonical_id(tag_label)
+    tag_uri = _uri(tag_id)
+    query = load_and_parse(
+        "insert_tag.sparql",
+        PREFIXES=PREFIXES,
+        tag_uri=tag_uri,
+        tag_id=tag_id,
+        tag_label=_literal(tag_label),
+        section_uri=section_uri,
+    )
+    _run_update(query)
 
 
 # ---------------------------------------------------------------------------
