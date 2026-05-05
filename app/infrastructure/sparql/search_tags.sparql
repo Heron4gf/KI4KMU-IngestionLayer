@@ -8,8 +8,8 @@ SELECT DISTINCT ?section ?chunk ?text ?index WHERE {
     ?section ki4kmu:hasTag ?tag ;
              rdf:type ki4kmu:Section .
     
-    ?chunk ki4kmu:isContained ?section ;
-           rdf:type ki4kmu:Chunk ;
+    ?section ki4kmu:isContained ?chunk .
+    ?chunk rdf:type ki4kmu:Chunk ;
            ki4kmu:text ?text ;
            ki4kmu:chunk_index ?index .
 }

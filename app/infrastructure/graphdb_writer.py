@@ -147,7 +147,7 @@ def insert_or_merge_section(section, chunk_id):
     )
     _run_update(section_query)
 
-    # Insert Text instances + Keyphrases
+    # Insert Text instances + Keyphrases (batched)
     texts = section.get("texts", [])
     for idx, text_obj in enumerate(texts):
         text_content = text_obj.get("content", "")
@@ -164,36 +164,36 @@ def insert_or_merge_section(section, chunk_id):
             )
             _run_update(text_query)
 
-            # Insert keyphrases linked to this Text
+            # Batch insert all keyphrases for this text in a single SPARQL call
             keyphrases = extract_keyphrases(text_content)
-            for kp in keyphrases:
-                kp_id = _canonical_id(kp)
-                kp_uri = _uri(f"kp_{section_uuid}_{idx}_{kp_id}")
-                kp_query = load_and_parse(
-                    "insert_keyphrase.sparql",
-                    PREFIXES=PREFIXES,
-                    text_uri=text_uri,
-                    keyphrase_uri=kp_uri,
-                    keyphrase_label=_literal(kp),
-                )
-                _run_update(kp_query)
+            if keyphrases:
+                kp_triples = ""
+                for kp_idx, kp in enumerate(keyphrases):
+                    kp_id = _canonical_id(kp)
+                    kp_uri = _uri(f"kp_{section_uuid}_{idx}_{kp_idx}_{kp_id}")
+                    kp_triples += f"    {text_uri} ki4kmu:hasKeyphrase {kp_uri} .\n"
+                    kp_triples += f"    {kp_uri} rdf:type ki4kmu:Keyphrase .\n"
+                    kp_triples += f"    {kp_uri} rdfs:label {_literal(kp)} .\n"
+                
+                batch_query = f"{PREFIXES}\nINSERT DATA {{\n{kp_triples}}}"
+                _run_update(batch_query)
 
-    # Insert Tag instances
+    # Batch insert all tags for this section in a single SPARQL call
     tags = section.get("tags", [])
-    for tag_obj in tags:
-        tag_label = tag_obj.get("label", "")
-        if tag_label:
-            tag_id = _canonical_id(tag_label)
-            tag_uri = _uri(tag_id)
-            tag_query = load_and_parse(
-                "insert_tag.sparql",
-                PREFIXES=PREFIXES,
-                tag_uri=tag_uri,
-                tag_id=tag_id,
-                tag_label=_literal(tag_label),
-                section_uri=section_uri,
-            )
-            _run_update(tag_query)
+    if tags:
+        tag_triples = ""
+        for tag_obj in tags:
+            tag_label = tag_obj.get("label", "")
+            if tag_label:
+                tag_id = _canonical_id(tag_label)
+                tag_uri = _uri(tag_id)
+                tag_triples += f"    {tag_uri} rdf:type ki4kmu:Tag .\n"
+                tag_triples += f"    {tag_uri} rdfs:label {_literal(tag_label)} .\n"
+                tag_triples += f"    {section_uri} ki4kmu:hasTag {tag_uri} .\n"
+        
+        if tag_triples:
+            batch_query = f"{PREFIXES}\nINSERT DATA {{\n{tag_triples}}}"
+            _run_update(batch_query)
 
 
 def insert_text(text_id, text_content, section_uri):

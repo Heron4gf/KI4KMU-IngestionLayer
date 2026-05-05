@@ -84,7 +84,7 @@ def get_chunks_for_section(section_id: str) -> list[dict]:
     query = f"""
 {PREFIXES}
 SELECT ?chunk ?text WHERE {{
-    ?chunk ki4kmu:isContained {section_uri} .
+    {section_uri} ki4kmu:isContained ?chunk .
     ?chunk rdf:type ki4kmu:Chunk .
     ?chunk ki4kmu:text ?text .
 }}
@@ -110,7 +110,7 @@ def get_section_for_chunk(chunk_id: str) -> str | None:
     query = f"""
 {PREFIXES}
 SELECT ?section WHERE {{
-    {chunk_uri} ki4kmu:isContained ?section .
+    ?section ki4kmu:isContained {chunk_uri} .
     ?section rdf:type ki4kmu:Section .
 }}
 LIMIT 1
