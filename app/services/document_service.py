@@ -6,7 +6,7 @@ from typing import Optional
 import httpx
 from langfuse import observe
 
-from app.services.unstructured_service import chunk_pdf_with_unstructured
+from app.services.preprocessing_service import chunk_pdf_with_preprocessing
 from app.services.image_service import process_images_pipeline
 from app.infrastructure.chroma_repository import document_already_ingested, store_chunks_in_chroma, delete_document_chunks
 from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section
@@ -56,7 +56,7 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
     await asyncio.to_thread(insert_document, document_id, pdf_hash)
 
     await _stage(JobStage.CHUNKING_TEXT)
-    text_elements = await chunk_pdf_with_unstructured(pdf_path)
+    text_elements = await chunk_pdf_with_preprocessing(pdf_path)
     logger.info("[SERVICE] Extracted %d text chunks", len(text_elements))
 
     await _stage(JobStage.EXTRACTING_IMAGES)

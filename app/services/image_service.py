@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from PIL import Image
 from langfuse import observe
 
-from app.services.unstructured_service import extract_images_with_unstructured
+from app.services.preprocessing_service import extract_images_with_preprocessing
 from app.infrastructure.ml.captioner import captioner
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @observe(name="image_processing_pipeline", as_type="chain", capture_input=True, capture_output=True)
 async def process_images_pipeline(pdf_path: Path) -> List[Dict[str, Any]]:
-    image_elements = await extract_images_with_unstructured(pdf_path)
+    image_elements = await extract_images_with_preprocessing(pdf_path)
 
     if not image_elements:
         return []
