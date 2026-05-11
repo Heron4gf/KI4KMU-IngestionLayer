@@ -30,7 +30,7 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
 - **Multilingual Reranking**: `cohere/rerank-4-pro` via OpenRouter handles cross-lingual queries
 - **Observability**: Full tracing and evaluation support via [Langfuse](https://langfuse.com/)
-- **Local-first**: Designed to run fully on-premise using open-weight models; external APIs are optional and swappable
+- **Local-first**: Designed to run fully on-premise using open-weight models; external APIs can be swapped with local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
 - **RESTful API**: Clean, versioned REST API with async job conventions
 - **Docker**: Fully containerized via Docker Compose
 
@@ -46,8 +46,6 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 | Reranking | [cohere/rerank-4-pro](https://openrouter.ai/cohere/rerank-4-pro) via OpenRouter |
 | Observability | [Langfuse](https://langfuse.com/) |
 | PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
-
-> **Note:** The image captioning pipeline supports local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
 
 ## Ontology
 
