@@ -17,7 +17,7 @@ Neither vector search nor graph search is sufficient on its own:
 
 A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes tagged with `chassis` or `compression`. The two result sets are merged and reranked by `cohere/rerank-4-pro` — a larger, multilingual embedding model than the one used for ingestion — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
 
-### Retrieval Examples
+### Visual Graph Examples
 
 ![Tag Example](./images/tag_example.png)
 ![Keyphrase Example](./images/keyphrase_example.png)
