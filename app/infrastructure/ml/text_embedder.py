@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from typing import List
 
 import torch
@@ -41,4 +42,15 @@ class TextEmbedder:
         return [e.tolist() for e in embeddings]
 
 
-text_embedder = TextEmbedder()
+_instance: "TextEmbedder | None" = None
+_lock = threading.Lock()
+
+
+def get_text_embedder() -> TextEmbedder:
+    """Return the singleton TextEmbedder instance (thread-safe, lazy)."""
+    global _instance
+    if _instance is None:
+        with _lock:
+            if _instance is None:
+                _instance = TextEmbedder()
+    return _instance

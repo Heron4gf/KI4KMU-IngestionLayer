@@ -52,8 +52,15 @@ def _literal(value):
         return f'"{value}"^^xsd:integer'
     if isinstance(value, float):
         return f'"{value}"^^xsd:decimal'
-    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
-    return f'"""{escaped}"""'
+    escaped = (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    return f'"{escaped}"'
 
 
 # ---------------------------------------------------------------------------

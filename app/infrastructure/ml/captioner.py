@@ -1,3 +1,5 @@
+import threading
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
@@ -35,4 +37,15 @@ class Captioner:
         return response.content.strip()
 
 
-captioner = Captioner()
+_instance: "Captioner | None" = None
+_lock = threading.Lock()
+
+
+def get_captioner() -> Captioner:
+    """Return the singleton Captioner instance (thread-safe, lazy)."""
+    global _instance
+    if _instance is None:
+        with _lock:
+            if _instance is None:
+                _instance = Captioner()
+    return _instance

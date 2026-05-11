@@ -11,7 +11,7 @@ from app.infrastructure.graphdb_reader import (
     search_chunks_by_tags,
     search_chunks_by_keyphrases,
 )
-from app.infrastructure.ml.rerank_embedder import rerank_embedder
+from app.infrastructure.ml.rerank_embedder import get_rerank_embedder
 from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
@@ -111,19 +111,20 @@ def _merge_chunks(
     return merged
 
 
-def _rerank_chunks(query: str, chunks: List[dict], top_k: int) -> List[QueryResultItem]:
-    """Rerank chunks using the 4B reranker model and return top_k."""
+async def _rerank_chunks(query: str, chunks: List[dict], top_k: int) -> List[QueryResultItem]:
+    """Rerank chunks using OpenRouter API and return top_k."""
     if not chunks:
         return []
 
     texts = [c["text"] for c in chunks]
 
-    # Embed query and all chunk texts
-    query_embeddings = rerank_embedder.embed_texts([query])
-    chunk_embeddings = rerank_embedder.embed_texts(texts)
+    # Embed query and all chunk texts via OpenRouter API
+    reranker = get_rerank_embedder()
+    query_embeddings = await reranker.embed_texts([query])
+    chunk_embeddings = await reranker.embed_texts(texts)
 
     # Compute similarities
-    scores = rerank_embedder.compute_similarities(
+    scores = await reranker.compute_similarities(
         query_embeddings[0], chunk_embeddings
     )
 
@@ -192,8 +193,8 @@ async def hybrid_search(
     if not all_chunks:
         return []
 
-    # Step 4: Rerank using 4B model
-    final_results = _rerank_chunks(query, all_chunks, max_results_total)
+    # Step 4: Rerank via OpenRouter API
+    final_results = await _rerank_chunks(query, all_chunks, max_results_total)
     logger.info(
         "[QUERY] Hybrid search complete: %d vector chunks, %d graph chunks, %d final",
         len(vector_chunks),

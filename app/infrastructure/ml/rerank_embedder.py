@@ -1,61 +1,82 @@
+import asyncio
 import logging
 import os
+import threading
 from typing import List
 
-import torch
-from huggingface_hub import snapshot_download
-from sentence_transformers import SentenceTransformer
+import httpx
 
-from app.core.config import RERANK_MODEL, RERANK_MODEL_PATH
+from app.core.config import OPENROUTER_API_KEY, RERANK_MODEL
 
 logger = logging.getLogger(__name__)
 
-WEIGHT_FILES = ("model.safetensors", "pytorch_model.bin")
-
-
-def _model_is_cached(path: str) -> bool:
-    return any(os.path.isfile(os.path.join(path, f)) for f in WEIGHT_FILES)
-
 
 class RerankEmbedder:
-    """Embedder used for reranking chunks against a query."""
+    """Embedder that uses OpenRouter API for reranking embeddings."""
 
-    def __init__(self, model_id: str = RERANK_MODEL):
-        if not _model_is_cached(RERANK_MODEL_PATH):
-            logger.info(f"Downloading reranker model {model_id} to {RERANK_MODEL_PATH}")
-            snapshot_download(
-                repo_id=model_id,
-                local_dir=RERANK_MODEL_PATH,
-                token=os.getenv("HF_TOKEN") or None,
-            )
+    def __init__(
+        self,
+        model_id: str = RERANK_MODEL,
+        api_key: str = OPENROUTER_API_KEY,
+        base_url: str = "https://openrouter.ai/api/v1",
+    ):
+        self._model_id = model_id
+        self._api_key = api_key
+        self._base_url = base_url
+        self._client = httpx.AsyncClient(timeout=60.0)
 
-        logger.info(f"Loading reranker model from {RERANK_MODEL_PATH}")
-        self._model = SentenceTransformer(RERANK_MODEL_PATH, trust_remote_code=True)
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._model.to(self._device)
+    async def _embed_single(self, text: str, input_type: str = None) -> List[float]:
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "HTTP-Referer": "http://localhost:8001",
+            "X-OpenRouter-Title": "KI-4-KMU Ingestion API",
+        }
+        payload = {
+            "input": text,
+            "model": self._model_id,
+        }
+        if input_type:
+            payload["input_type"] = input_type
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        embeddings = self._model.encode(
-            texts,
-            convert_to_numpy=False,
-            device=self._device,
-            normalize_embeddings=True,
+        response = await self._client.post(
+            f"{self._base_url}/embeddings",
+            json=payload,
+            headers=headers,
         )
-        return [e.tolist() for e in embeddings]
+        response.raise_for_status()
+        data = response.json()
+        return data["data"][0]["embedding"]
 
-    def compute_similarities(
+    async def embed_texts(self, texts: List[str]) -> List[List[float]]:
+        tasks = [self._embed_single(t) for t in texts]
+        return await asyncio.gather(*tasks)
+
+    async def compute_similarities(
         self, query_embedding: List[float], candidate_embeddings: List[List[float]]
     ) -> List[float]:
         """Compute cosine similarity between query and each candidate."""
-        import torch.nn.functional as F
+        import math
 
-        q = torch.tensor(query_embedding, device=self._device)
+        q = query_embedding
         scores = []
         for cand in candidate_embeddings:
-            c = torch.tensor(cand, device=self._device)
-            sim = F.cosine_similarity(q.unsqueeze(0), c.unsqueeze(0), dim=1)
-            scores.append(float(sim.item()))
+            dot = sum(a * b for a, b in zip(q, cand))
+            q_norm = math.sqrt(sum(a * a for a in q))
+            c_norm = math.sqrt(sum(b * b for b in cand))
+            sim = dot / (q_norm * c_norm) if q_norm and c_norm else 0.0
+            scores.append(float(sim))
         return scores
 
 
-rerank_embedder = RerankEmbedder()
+_instance: "RerankEmbedder | None" = None
+_lock = threading.Lock()
+
+
+def get_rerank_embedder() -> "RerankEmbedder":
+    """Return the singleton RerankEmbedder instance (thread-safe, lazy)."""
+    global _instance
+    if _instance is None:
+        with _lock:
+            if _instance is None:
+                _instance = RerankEmbedder()
+    return _instance

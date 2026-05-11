@@ -29,8 +29,9 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
 
-RERANK_MODEL = os.getenv("RERANK_MODEL", "perplexity-ai/pplx-embed-v1-4b")
-RERANK_MODEL_PATH = os.getenv("RERANK_MODEL_PATH", "./models/reranker")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "qwen/qwen3-embedding-8b")
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 

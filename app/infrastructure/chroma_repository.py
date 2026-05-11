@@ -6,7 +6,7 @@ import chromadb
 from app.models.api_models import QueryResultItem
 from app.utils.files import cast_to_str, sanitize_metadata
 from app.core.config import CHROMA_COLLECTION, CHROMA_HOST, CHROMA_PORT
-from app.infrastructure.ml.text_embedder import text_embedder
+from app.infrastructure.ml.text_embedder import get_text_embedder
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ def build_chroma_payload(
     documents = section_documents + image_documents
     texts_to_embed = section_texts_to_embed + image_texts_to_embed
 
-    embeddings = text_embedder.embed_texts(texts_to_embed) if texts_to_embed else []
+    embeddings = get_text_embedder().embed_texts(texts_to_embed) if texts_to_embed else []
 
     return {
         "ids": ids,
@@ -199,7 +199,7 @@ def semantic_search(query: str, top_k: int = 5) -> List[QueryResultItem]:
     if top_k <= 0:
         top_k = 5
 
-    query_embeddings = text_embedder.embed_texts([query])
+    query_embeddings = get_text_embedder().embed_texts([query])
     collection = get_chroma_collection()
 
     raw = collection.query(

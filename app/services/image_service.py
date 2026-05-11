@@ -9,7 +9,7 @@ from PIL import Image
 from langfuse import observe
 
 from app.services.preprocessing_service import extract_images_with_preprocessing
-from app.infrastructure.ml.captioner import captioner
+from app.infrastructure.ml.captioner import get_captioner
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def process_images_pipeline(pdf_path: Path) -> List[Dict[str, Any]]:
             return None
 
         try:
-            caption = await asyncio.to_thread(captioner.caption, img)
+            caption = await asyncio.to_thread(get_captioner().caption, img)
             if not caption:
                 return None
 
