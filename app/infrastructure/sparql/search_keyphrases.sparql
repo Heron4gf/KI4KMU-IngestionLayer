@@ -3,7 +3,7 @@
 SELECT DISTINCT ?section ?chunk ?text ?index WHERE {
     ?kp rdf:type ki4kmu:Keyphrase ;
         rdfs:label ?kpLabel .
-    FILTER(CONTAINS(LCASE(STR(?kpLabel)), LCASE("{{keyword}}")))
+    FILTER(CONTAINS(LCASE(STR(?kpLabel)), LCASE({{keyword_sparql}})))
     
     ?textNode ki4kmu:hasKeyphrase ?kp .
     

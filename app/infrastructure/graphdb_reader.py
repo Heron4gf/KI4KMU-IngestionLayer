@@ -8,10 +8,6 @@ from app.infrastructure.sparql import load_and_parse
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Lazy SPARQL client — created on first use, not at import time
-# ---------------------------------------------------------------------------
-
 _SPARQL_READ: SPARQLWrapper | None = None
 
 
@@ -34,8 +30,20 @@ def _uri(local: str) -> str:
     return f"<{BASE_NS}{local}>"
 
 
+def _sparql_str(value: str) -> str:
+    """Escape a string value for safe inline use as a SPARQL plain literal."""
+    escaped = (
+        value
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    return f'"{escaped}"'
+
+
 def _execute_and_parse(query: str) -> list[dict]:
-    """Execute a SELECT query and return the bindings list."""
     try:
         client = _get_read_client()
         client.setQuery(query)
@@ -47,10 +55,6 @@ def _execute_and_parse(query: str) -> list[dict]:
 
 
 def get_chunks_for_document(document_id: str) -> list[dict]:
-    """
-    Retrieve all chunks belonging to a document via ki4kmu:belongsTo.
-    Returns list of dicts with keys: chunk_id, text, chunk_index
-    """
     doc_uri = f"<{BASE_NS}doc_{document_id}>"
     query = f"""
 {PREFIXES}
@@ -76,10 +80,6 @@ ORDER BY ?index
 
 
 def get_chunks_for_section(section_id: str) -> list[dict]:
-    """
-    Retrieve all chunks in a section via ki4kmu:isContained.
-    Returns list of dicts with keys: chunk_id, text
-    """
     section_uri = _uri(section_id)
     query = f"""
 {PREFIXES}
@@ -102,10 +102,6 @@ SELECT ?chunk ?text WHERE {{
 
 
 def get_section_for_chunk(chunk_id: str) -> str | None:
-    """
-    Get the section_id that a chunk belongs to (if any).
-    Returns section_id string or None.
-    """
     chunk_uri = _uri(chunk_id)
     query = f"""
 {PREFIXES}
@@ -123,14 +119,14 @@ LIMIT 1
 
 
 def search_chunks_by_tags(keywords: List[str]) -> List[dict]:
-    """
-    Search for chunks via tag matching on sections.
-    Returns list of dicts with keys: chunk_id, text, chunk_index, section_id
-    """
     all_chunks = []
     seen = set()
     for keyword in keywords:
-        query = load_and_parse("search_tags.sparql", PREFIXES=PREFIXES, keyword=keyword)
+        query = load_and_parse(
+            "search_tags.sparql",
+            PREFIXES=PREFIXES,
+            keyword_sparql=_sparql_str(keyword),
+        )
         bindings = _execute_and_parse(query)
         for row in bindings:
             chunk_uri = row["chunk"]["value"]
@@ -148,14 +144,14 @@ def search_chunks_by_tags(keywords: List[str]) -> List[dict]:
 
 
 def search_chunks_by_keyphrases(keywords: List[str]) -> List[dict]:
-    """
-    Search for chunks via keyphrase matching (Text -> Keyphrase -> Section -> Chunk).
-    Returns list of dicts with keys: chunk_id, text, chunk_index, section_id
-    """
     all_chunks = []
     seen = set()
     for keyword in keywords:
-        query = load_and_parse("search_keyphrases.sparql", PREFIXES=PREFIXES, keyword=keyword)
+        query = load_and_parse(
+            "search_keyphrases.sparql",
+            PREFIXES=PREFIXES,
+            keyword_sparql=_sparql_str(keyword),
+        )
         bindings = _execute_and_parse(query)
         for row in bindings:
             chunk_uri = row["chunk"]["value"]

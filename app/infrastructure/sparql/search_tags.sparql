@@ -3,7 +3,7 @@
 SELECT DISTINCT ?section ?chunk ?text ?index WHERE {
     ?tag rdf:type ki4kmu:Tag ;
          rdfs:label ?tagLabel .
-    FILTER(CONTAINS(LCASE(STR(?tagLabel)), LCASE("{{keyword}}")))
+    FILTER(CONTAINS(LCASE(STR(?tagLabel)), LCASE({{keyword_sparql}})))
     
     ?section ki4kmu:hasTag ?tag ;
              rdf:type ki4kmu:Section .
