@@ -1,5 +1,6 @@
 import base64
 import io
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -7,14 +8,19 @@ import fitz  # PyMuPDF
 import pymupdf4llm
 from PIL import Image
 
-_MIN_IMAGE_PIXELS = 100 * 100  # ignore tiny icons/decorations
+_MIN_IMAGE_PIXELS = 100 * 100
+_IMAGE_PLACEHOLDER_RE = re.compile(r"\*\*==>.*?<==\*\*", re.IGNORECASE)
+
+
+def _strip_image_placeholders(text: str) -> str:
+    return _IMAGE_PLACEHOLDER_RE.sub("", text).strip()
 
 
 def extract_text_chunks(pdf_path: Path, max_chars: int = 1500) -> List[Dict[str, Any]]:
     pages = pymupdf4llm.to_markdown(str(pdf_path), page_chunks=True)
     chunks = []
     for page in pages:
-        text = page["text"].strip()
+        text = _strip_image_placeholders(page["text"].strip())
         if not text:
             continue
         page_num = page["page"]
