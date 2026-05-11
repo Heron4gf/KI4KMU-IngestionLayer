@@ -78,7 +78,6 @@ async def _resolve_vector_sections_to_chunks(
                 "chunk_id": cid,
                 "text": chunk["text"],
                 "section_id": section_id,
-                "source": "vector",
             })
 
     return all_chunks
@@ -118,9 +117,7 @@ async def _rerank_chunks(query: str, chunks: List[dict], top_k: int) -> List[Que
             metadata={
                 "chunk_id": item["chunk_id"],
                 "section_id": item.get("section_id", ""),
-                "source": item.get("source", "reranked"),
             },
-            source=item.get("source", "reranked"),
         )
         for item in scored[:top_k]
     ]
