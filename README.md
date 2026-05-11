@@ -1,6 +1,8 @@
-# PDF Ingestion API
+# KI-4-KMU Ingestion Layer
 
-A FastAPI-based REST API for ingesting PDF documents and performing semantic search queries using ChromaDB as the vector database.
+A Hybrid RAG system implementing Vector ([ChromaDB](https://www.trychroma.com/products/chromadb)) as well as Knowledge Graph ([GraphDB](https://graphdb.ontotext.com/)) approaches to complement each disadvantages to achieve better retrieval accuracy than traditional RAG systems.
+
+The system is containerized and orchestrated through Docker and Docker Compose and is accessible through FastAPI defined REST endpoints and implements a GUI in Streamlit for easier access to the Ingestion APIs as well as SwaggerUI to test the retrieval performances.
 
 ## Table of Contents
 
