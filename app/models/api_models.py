@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List
 from pydantic import BaseModel
 
 
@@ -14,7 +14,6 @@ class QueryResultItem(BaseModel):
     text: str
     score: float
     metadata: Dict[str, Any]
-    source: Literal["vector", "graph"] = "vector"
 
 
 class QueryResponse(BaseModel):
