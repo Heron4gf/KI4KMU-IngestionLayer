@@ -1,245 +1,111 @@
 # KI-4-KMU Ingestion Layer
 
-A Hybrid RAG system implementing Vector ([ChromaDB](https://www.trychroma.com/products/chromadb)) as well as Knowledge Graph ([GraphDB](https://graphdb.ontotext.com/)) approaches to complement each disadvantages to achieve better retrieval accuracy than traditional RAG systems.
+A Hybrid RAG system combining a Vector Database ([ChromaDB](https://www.trychroma.com/)) and a Knowledge Graph ([GraphDB](https://graphdb.ontotext.com/)) to achieve better retrieval accuracy than traditional single-approach RAG systems. The two approaches complement each other's weaknesses, and results are merged and reranked before being returned.
 
-The system is containerized and orchestrated through Docker and Docker Compose and is accessible through FastAPI defined REST endpoints and implements a GUI in Streamlit for easier access to the Ingestion APIs as well as SwaggerUI to test the retrieval performances.
+## Architecture
 
-## Table of Contents
+![Architecture](./images/ingestion_layer_structure.png)
 
-- [Features](#features)
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Building](#building)
-- [Running](#running)
-- [Web GUI Interface](#web-gui-interface)
-- [REST API Endpoints](#rest-api-endpoints)
-- [Docker Deployment](#docker-deployment)
+## Why Hybrid?
+
+Neither vector search nor graph search is sufficient on its own:
+
+| | Vector DB | Knowledge Graph |
+|---|---|---|
+| ✅ Strengths | Semantic understanding, natural language queries | Keyword & keyphrase matching, structured traversal |
+| ❌ Weaknesses | Domain-specific terms, exact keyword lookup | Semantic ranking, cross-lingual queries |
+
+A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes tagged with `chassis` or `compression`. The two result sets are merged and reranked by `cohere/rerank-4-pro` — a larger, multilingual embedding model than the one used for ingestion — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
+
+### Retrieval Examples
+
+![Tag Example](./images/tag_example.png)
+![Keyphrase Example](./images/keyphrase_example.png)
 
 ## Features
 
-- **Async PDF Ingestion**: Upload PDF documents and poll for results — no blocking on long-running processing
-- **Semantic Search**: Perform semantic queries across ingested documents
-- **Duplicate Detection**: Automatically detects and prevents duplicate document ingestion using MD5 hashing
-- **RESTful API**: Clean, versioned REST API following HTTP async job conventions (RFC 7231 §6.3.3)
-- **Docker Support**: Full Docker and Docker Compose support for easy deployment
+- **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
+- **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
+- **Multilingual Reranking**: `cohere/rerank-4-pro` via OpenRouter handles cross-lingual queries
+- **Duplicate Detection**: MD5 hashing prevents re-ingesting the same document
+- **RESTful API**: Clean, versioned REST API with async job conventions
+- **Docker**: Fully containerized via Docker Compose
 
-## Architecture
-![Architecture](./images/ingestion_layer_structure.png)
+## Technologies
 
-## Graph Database Integration
-The system includes a GraphDB integration that stores extracted entities and their relationships. The graph database provides structured knowledge representation alongside the vector database for semantic search.
+| Component | Technology |
+|---|---|
+| API | [FastAPI](https://fastapi.tiangolo.com/) |
+| Vector DB | [ChromaDB](https://www.trychroma.com/) |
+| Knowledge Graph | [GraphDB (Ontotext)](https://graphdb.ontotext.com/) |
+| Text Embedding | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b) |
+| Section Extraction SLM | [Gemma-4-9B](https://huggingface.co/google/gemma-4-9b) |
+| Reranking | [cohere/rerank-4-pro](https://openrouter.ai/cohere/rerank-4-pro) via OpenRouter |
+| Observability | [Langfuse](https://langfuse.com/) |
+| PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
 
-### Ontology
+> **Note:** The image captioning pipeline supports local inference via [LM Studio](https://lmstudio.ai/) for air-gapped deployments.
 
-The system uses a custom RDF/OWL ontology defined in `ontology/ontology.ttl` to structure knowledge about documents:
+## Ontology
+
+The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB.
 
 **Classes:**
-- `ki4kmu:Document` — An ingested PDF document
-- `ki4kmu:Chunk` — A text chunk extracted from a document
-- `ki4kmu:Section` — A logical section identified within a document
-  - `ki4kmu:Text` — Prose/content section
-  - `ki4kmu:Image` — An image extracted from a document
+- `Document` — an ingested PDF
+- `Chunk` — a raw text chunk extracted from a document page
+- `Section` — a logical section identified by the SLM within a chunk (subclasses: `Text`, `Image`)
+- `Tag` — a retrieval label assigned to a section by the SLM (e.g. `"compression"`, `"GDPR"`)
+- `Keyphrase` — a lemmatized keyword algorithmically extracted from section text
 
-**Relationships:**
-- `ki4kmu:belongsTo` — Links chunks/images to their parent document
-- `ki4kmu:isContained` — Links chunks to the section they belong to
+**Key relationships:**
+- `Chunk` → `belongsTo` → `Document`
+- `Section` → `isContained` → `Chunk`
+- `Section` → `hasTag` → `Tag`
+- `Text` → `hasKeyphrase` → `Keyphrase`
 
-**Properties:**
-- `ki4kmu:document_id` — Unique document identifier
-- `ki4kmu:pdf_hash` — MD5 hash for duplicate detection
-- `ki4kmu:chunk_index` — Position of chunk in document
-- `ki4kmu:text` — The actual text content
-- `ki4kmu:page_number` — Source page number
-- `ki4kmu:section_id` — Identifier for the section type
-- `ki4kmu:section_enumeration` — Hierarchical section number (e.g., "1.2.3")
-- `ki4kmu:image_base64` — Base64-encoded image data
-
-This ontology enables SPARQL queries for complex relationship-based searches across the knowledge graph.
-
-### Example Graph Result
-Here's an example of the graph structure generated from document processing:
-
-![Example Graph Result](./images/example_graph_result.png)
-
-The graph visualization shows:
-- **Nodes**: Extracted entities (colored by type)
-- **Edges**: Relationships between entities
-- **Labels**: Entity names and types
-- **Attributes**: Additional metadata about entities and relationships
-
-This structured representation enables:
-- Complex relationship queries
-- Knowledge graph exploration
-- Entity-centric analysis
-- Cross-document entity linking
-
-### Vector Database Configuration
-
-The system utilizes a **unified vector space** in ChromaDB for both text and image embeddings:
-
-| Content Type | Embedding Model | Purpose |
-|--------------|-----------------|---------|
-| **Text** | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-4b) | Text embeddings for semantic search |
-| **Images** | [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) | Image description embeddings via local inference |
-
-### Image Embedding Process
-
-Images are processed using the following pipeline:
-
-1. **Image Description**: Images are described using the [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) model from Hugging Face
-2. **Local Inference**: The model is loaded via [LM Studio](https://lmstudio.ai/) which creates a Local Server with access to the local network
-3. **Unified Embedding**: Image descriptions are embedded in the same vector space as text content
-4. **Base64 Storage**: The original image is saved as base64-encoded data alongside its embedding
-
-This unified architecture provides:
-- **Simplicity**: Single vector space for all content types
-- **Semantic Consistency**: Image descriptions and text share the same embedding space for coherent search results
-- **Local Processing**: Image descriptions are generated locally via LM Studio, ensuring data privacy
-
-## Prerequisites
-
-- [Python 3.11](https://www.python.org/downloads/release/python-3110/) or higher
-- [pip](https://pypi.org/project/pip/) (Python package manager)
-- [Docker](https://www.docker.com/) and Docker Compose
-
-## Testing
-
-Run unit and slice tests:
-```bash
-py -m pytest
-```
-
-Run all tests including smoke tests (requires Docker services):
-```bash
-py -m pytest --run-smoke
-```
+This structure means a query can reach relevant text chunks either by traversing tags/keyphrases (graph path) or by finding the section in the vector DB and then fetching its parent chunk (vector path).
 
 ## Installation
 
-1. **Clone the repository**:
+### Prerequisites
+- [Docker](https://www.docker.com/) and Docker Compose
+
+### Setup
+
+1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd IngestionLayer
+   cd KI4KMU-IngestionLayer
    ```
 
-3. [Build](#building)
-4. [Run](#running)
+2. Copy and fill in the environment file:
+   ```bash
+   cp .env.example .env
+   ```
 
+3. Start all services:
+   ```bash
+   docker-compose up --build
+   ```
 
-## Building
+The API will be available at `http://localhost:8001`. Interactive docs at `http://localhost:8001/docs`.
 
-### Build Docker Image
-
-```bash
-docker build -t pdf-ingestion-api .
-
-docker build -t pdf-ingestion-api:latest .
-```
-
-### Build Using Docker Compose
-
-```bash
-docker-compose build
-```
-
-## Running
-
-### Using Docker
-
-```bash
-docker run -d -p 8001:8001 -v $(pwd)/chroma-data:/app/chroma-data --name pdf-ingestion-api pdf-ingestion-api
-```
-
-### Using Docker Compose
-
-```bash
-docker-compose up
-```
-
----
-
-## Web GUI Interface
-
-A Streamlit-based web interface is available for easy document upload and job monitoring.
-
-### Accessing the GUI
-
-Once the services are running, access the web interface at:
-
-**URL**: http://localhost:8501
-
-The GUI provides a user-friendly way to:
-- Upload PDF documents through a drag-and-drop interface
-- Monitor ingestion job status in real-time
-- View processing results including chunk counts
-- Track multiple documents simultaneously
-
-### GUI Example
-
-Here's a preview of the web interface:
-
-![GUI Example](./images/gui_example.png)
-
-The interface shows:
-- **File Upload**: Drag and drop or select PDF files
-- **Job Status**: Real-time status updates with visual indicators (⏳ pending, 🔄 processing, ✅ completed, ❌ failed)
-- **Results**: Chunk counts for successfully processed documents
-- **Error Display**: Clear error messages for failed jobs
-
-### Running the GUI Locally
-
-If you prefer to run the GUI outside of Docker:
-
-```bash
-cd gui
-pip install -r requirements.txt
-streamlit run streamlit_app.py
-```
-
-The GUI will be available at http://localhost:8501.
-
-## REST API Endpoints
+## REST API
 
 Base URL: `http://localhost:8001/v1`
 
----
-
-### Health Check
-
-Check if the API is running and healthy.
-
-| Method | Endpoint | Status Code |
-|--------|----------|-------------|
-| GET | `/health` | 200 OK |
-
-**Response:**
-```json
-{
-  "status": "ok"
-}
-```
+### `GET /health`
+Returns `{ "status": "ok" }` — use this to check the service is up.
 
 ---
 
-### Ingest Document
+### `POST /documents` — Ingest a PDF
 
-Upload a PDF document to start ingestion. Processing happens asynchronously — the endpoint returns immediately with a job reference. Use [Get Job Status](#get-job-status) to poll for the result.
+Upload a PDF for async ingestion. Returns immediately with a job reference.
 
-| Method | Endpoint | Status Code |
-|--------|----------|-------------|
-| POST | `/documents` | 202 Accepted |
-
-**Request:** `multipart/form-data`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | UploadFile | Yes | PDF file to ingest (`application/pdf`) |
+**Request:** `multipart/form-data`, field `file` (PDF only)
 
 **Response `202 Accepted`:**
-
-Includes a `Location` response header pointing to the job status URL.
-
 ```json
 {
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -248,38 +114,13 @@ Includes a `Location` response header pointing to the job status URL.
 }
 ```
 
-**Error Responses:**
-
-| Status Code | Description |
-|-------------|-------------|
-| 400 Bad Request | The uploaded file must be a PDF |
-
 ---
 
-### Get Job Status
+### `GET /jobs/{job_id}` — Poll Job Status
 
-Poll the status of a previously submitted ingestion job. Repeat until `status` is `completed` or `failed`.
+Poll until `status` is `completed` or `failed`. A 2–5 second interval is reasonable.
 
-| Method | Endpoint | Status Code |
-|--------|----------|-------------|
-| GET | `/jobs/{job_id}` | 200 OK |
-
-**Path Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `job_id` | string (UUID) | The job ID returned by `POST /documents` |
-
-**Job Status Values:**
-
-| Status | Description |
-|--------|-------------|
-| `pending` | Job accepted, not yet started |
-| `processing` | Ingestion is in progress |
-| `completed` | Ingestion finished successfully |
-| `failed` | Ingestion encountered an error |
-
-**Response `200 OK` — completed:**
+**Response `200 OK`:**
 ```json
 {
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -291,101 +132,52 @@ Poll the status of a previously submitted ingestion job. Repeat until `status` i
 }
 ```
 
-**Response `200 OK` — failed:**
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "failed",
-  "filename": "document.pdf",
-  "document_id": null,
-  "num_chunks": null,
-  "error": "No chunks were stored for this document."
-}
-```
-
-**Error Responses:**
-
-| Status Code | Description |
-|-------------|-------------|
-| 404 Not Found | No job found for the given `job_id` |
-
 ---
 
-### Query Documents
+### `POST /query` — Hybrid Search
 
-Perform semantic search across ingested documents.
-
-| Method | Endpoint | Status Code |
-|--------|----------|-------------|
-| POST | `/query` | 200 OK |
-
-**Request Body (`application/json`):**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `query` | string | Yes | — | The search query text |
-| `top_k` | integer | No | 5 | Number of results to return |
+**Request body:**
+```json
+{
+  "query": "engine compression ratio",
+  "top_k": 5
+}
+```
 
 **Response `200 OK`:**
 ```json
 {
-  "query": "machine learning algorithms",
+  "query": "engine compression ratio",
   "results": [
     {
-      "id": "chunk-uuid-1",
-      "text": "Machine learning is a subset of artificial intelligence...",
-      "score": 0.95,
+      "id": "doc-uuid_chunk_3",
+      "text": "The compression ratio of Chassis 3413GT is 2.1 bars...",
+      "score": 0.94,
       "metadata": {
-        "document_id": "550e8400-e29b-41d4-a716-446655440000",
-        "pdf_hash": "abc123def456"
+        "chunk_id": "doc-uuid_chunk_3",
+        "section_id": "section-uuid"
       }
     }
   ]
 }
 ```
 
-**Error Responses:**
-
-| Status Code | Description |
-|-------------|-------------|
-| 400 Bad Request | Query must not be empty |
-
 ---
 
 ## Ingestion Flow
 
-Document ingestion is asynchronous. The recommended client flow is:
-
 ```
-1. POST /v1/documents          → 202 Accepted  { job_id, status_url }
-2. GET  /v1/jobs/{job_id}      → 200 OK        { status: "processing" }   (poll)
-3. GET  /v1/jobs/{job_id}      → 200 OK        { status: "completed", document_id, num_chunks }
-4. POST /v1/query              → 200 OK        { results: [...] }
+1. POST /v1/documents       → 202 Accepted  { job_id, status_url }
+2. GET  /v1/jobs/{job_id}   → poll until status = "completed"
+3. POST /v1/query           → hybrid search results
 ```
 
-There is no fixed polling interval requirement; a 2–5 second interval is reasonable for typical documents.
+## Testing
 
----
+```bash
+# Unit and slice tests
+pytest
 
-## Docker Deployment
-
-### Dockerfile Configuration
-
-The Dockerfile is configured with:
-- Python 3.11 slim base image
-- Port 8001 exposed
-- Automatic ChromaDB data persistence via volume mounting
-
-### Docker Compose Configuration
-
-The `docker-compose.yml` defines:
-- Service name: `pdf-ingestion-api`
-- Port mapping: 8001:8001
-- Volume persistence for ChromaDB data
-- Build context: current directory
-
-## API Documentation
-
-Interactive API documentation is available at:
-- **Swagger UI**: http://localhost:8001/docs
-- **ReDoc**: http://localhost:8001/redoc
+# All tests including smoke tests (requires running Docker services)
+pytest --run-smoke
+```
