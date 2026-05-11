@@ -54,8 +54,15 @@ def parse_query(query: str, **kwargs: Any) -> str:
             return f'"{value}"^^xsd:decimal'
         
         # String values - escape and wrap in triple quotes
-        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
-        return f'"""{escaped}"""'
+        escaped = (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
+        return f'"{escaped}"'
     
     return re.sub(r"\{\{(\w+)\}\}", replace_placeholder, query)
 
