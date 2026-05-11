@@ -1,6 +1,8 @@
 # KI-4-KMU Ingestion Layer
 
-A Hybrid RAG system combining a Vector Database ([ChromaDB](https://www.trychroma.com/)) and a Knowledge Graph ([GraphDB](https://graphdb.ontotext.com/)) to achieve better retrieval accuracy than traditional single-approach RAG systems. The two approaches complement each other's weaknesses, and results are merged and reranked before being returned.
+This project is part of the [KI-4-KMU initiative](https://www.ki-zentrum.ch/2025/07/03/fhnw-ki-praxisleitfaden-und-ki-canvas-ki-4-kmu-methode/) developed at FHNW, which aims to provide SMEs with practical AI tooling and methodology. This ingestion layer powers the knowledge platform behind the project, enabling document-grounded question answering over domain-specific PDFs.
+
+A Hybrid RAG system combining a Vector Database ([ChromaDB](https://www.trychroma.com/)) and a Knowledge Graph ([GraphDB](https://graphdb.ontotext.com/)) to achieve better retrieval accuracy than traditional single-approach RAG systems. The two approaches complement each other's weaknesses, and results are merged and reranked before being returned. The system prioritizes local deployment and open-weight models wherever possible.
 
 ## Architecture
 
@@ -17,7 +19,7 @@ Neither vector search nor graph search is sufficient on its own:
 
 A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes tagged with `chassis` or `compression`. The two result sets are merged and reranked by `cohere/rerank-4-pro` — a larger, multilingual embedding model than the one used for ingestion — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
 
-### Visual Graph Examples
+### Retrieval Examples
 
 ![Tag Example](./images/tag_example.png)
 ![Keyphrase Example](./images/keyphrase_example.png)
@@ -27,7 +29,8 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 - **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
 - **Multilingual Reranking**: `cohere/rerank-4-pro` via OpenRouter handles cross-lingual queries
-- **Duplicate Detection**: MD5 hashing prevents re-ingesting the same document
+- **Observability**: Full tracing and evaluation support via [Langfuse](https://langfuse.com/)
+- **Local-first**: Designed to run fully on-premise using open-weight models; external APIs are optional and swappable
 - **RESTful API**: Clean, versioned REST API with async job conventions
 - **Docker**: Fully containerized via Docker Compose
 
@@ -44,7 +47,7 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 | Observability | [Langfuse](https://langfuse.com/) |
 | PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
 
-> **Note:** The image captioning pipeline supports local inference via [LM Studio](https://lmstudio.ai/) for air-gapped deployments.
+> **Note:** The image captioning pipeline supports local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
 
 ## Ontology
 
