@@ -28,6 +28,9 @@ class RerankEmbedder:
         Call OpenRouter /rerank and return a relevance score list
         aligned to the original documents order.
         """
+        # top_n must be >= 1 and <= len(documents)
+        clamped_top_n = max(1, min(top_n, len(documents)))
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -36,16 +39,23 @@ class RerankEmbedder:
             "model": self._model_id,
             "query": query,
             "documents": documents,
-            "top_n": top_n,
+            "top_n": clamped_top_n,
         }
         response = await self._client.post(
             f"{self._base_url}/rerank",
             json=payload,
             headers=headers,
         )
-        response.raise_for_status()
-        data = response.json()
 
+        if response.status_code != 200:
+            logger.error(
+                "[RERANK] API error %d: %s",
+                response.status_code,
+                response.text,
+            )
+            response.raise_for_status()
+
+        data = response.json()
         scores = [0.0] * len(documents)
         for result in data.get("results", []):
             scores[result["index"]] = float(result["relevance_score"])
