@@ -29,7 +29,7 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
 
-RERANK_MODEL = os.getenv("RERANK_MODEL", "qwen/qwen3-embedding-8b")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere/rerank-4-pro")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
