@@ -61,7 +61,7 @@ https://github.com/user-attachments/assets/25fc481c-ed59-4811-9182-c78dda041a5f
 | Knowledge Graph | [GraphDB (Ontotext)](https://graphdb.ontotext.com/) |
 | Text Embedding | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b) |
 | Section Extraction SLM | [Gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) |
-| Reranking | [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) |
+| Reranking | [Ettin Reranker](https://huggingface.co/blog/ettin-reranker) |
 | Observability | [Langfuse](https://langfuse.com/) |
 | PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
 
