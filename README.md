@@ -67,68 +67,11 @@ https://github.com/user-attachments/assets/25fc481c-ed59-4811-9182-c78dda041a5f
 
 ## Ontology
 
-The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB.
-
-**Classes:**
-- `Document` — an ingested PDF
-- `Chunk` — a raw text chunk extracted from a document page
-- `Section` — a logical section identified by the SLM within a chunk (subclasses: `Text`, `Image`)
-- `Concept` — a retrieval label assigned to a section by the SLM (e.g. `"compression"`, `"GDPR"`)
-- `Keyphrase` — a lemmatized keyword algorithmically extracted from section text
-
-**Object properties (relationships):**
-- `Chunk` → `belongsTo` → `Document`
-- `Chunk` / `Text` / `Image` → `isContained` → `Section` *(direction: chunk is contained in section)*
-- `Section` → `hasConcept` → `Concept`
-- `Text` → `hasKeyphrase` → `Keyphrase`
-- `Concept` ↔ `coOccursWith` ↔ `Concept` *(built post-ingestion, symmetric)*
-
-**Datatype properties:**
-- `Document`: `document_id` (string), `pdf_hash` (string)
-- `Chunk`: `text` (string), `chunk_index` (integer), `page_number` (integer)
-- `Section`: `section_id` (string), `section_uuid` (string)
-- `Image`: `image_base64` (string), `page_number` (integer)
-- `Concept`: `concept_label` (string)
-
-This structure means a query can reach relevant text chunks either by traversing concepts/keyphrases (graph path) or by finding the section in the vector DB and then fetching its child chunks (vector path).
+The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB. See the full [Ontology Reference](docs/ontology.md) for class definitions, relationships, datatype properties, and example RDF triples.
 
 ## Graph Traversal
 
-Concept nodes are **global hubs**: every section across all documents that receives the same concept (e.g. `gdpr`) points to the same single Concept node in GraphDB. This enables two graph traversal strategies that run on top of vector search results:
-
-### 2-hop: Cross-section concept traversal
-
-Starting from a section found by vector search, the graph follows its concepts to discover *all other sections in the knowledge base that share at least one concept*:
-
-```
-seed_section --hasConcept--> Concept <--hasConcept-- related_section --isContained--> chunk
-```
-
-This retrieves chunks that may use completely different vocabulary but are structurally labeled with the same concept — something cosine similarity cannot find.
-
-### 3-hop: Concept co-occurrence expansion
-
-After each document is ingested, `build_concept_cooccurrence()` scans all sections and inserts a `ki4kmu:coOccursWith` edge between every pair of concepts that appear together on the same section. This builds a concept-level co-occurrence graph automatically.
-
-At query time, the traversal extends one more hop:
-
-```
-seed_section --hasConcept--> Concept_A --coOccursWith--> Concept_B <--hasConcept-- related_section --isContained--> chunk
-```
-
-This retrieves chunks about *topics that tend to go with* the seed section's concepts, even if they share no concept directly. For example, if `gdpr` and `datenschutzbeauftragter` co-occur frequently, a query seeding on `gdpr` will also surface chunks labeled only with `datenschutzbeauftragter`.
-
-### Retrieval pipeline
-
-Each arm independently fetches up to `VECTOR_TOP_K` (default: 50) candidates. The merged, deduplicated pool is reranked by Qwen3-Reranker-0.6B down to `top_k`. Traversal expansion stops after collecting `TRAVERSAL_LIMIT` (default: 100) unique chunks.
-
-| Stage | Source | What it finds |
-|---|---|---|
-| 1 | Chroma vector search | Embedding-similar sections (up to 50) |
-| 2 | Graph keyword search | Sections whose concepts/keyphrases match query terms (up to 50) |
-| 3 | 2-hop concept traversal | Sections sharing concepts with vector results (up to 100 total) |
-| 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results (up to 100 total) |
-| 5 | Qwen3-Reranker-0.6B | Final ranked top-k from merged pool |
+Concept nodes are **global hubs**: every section across all documents that receives the same concept points to the same single Concept node in GraphDB. This enables two traversal strategies that run on top of vector search results. See the full [Graph Traversal](docs/graph-traversal.md) page for details on 2-hop concept traversal, 3-hop co-occurrence expansion, the retrieval pipeline, and SPARQL query patterns.
 
 ## Installation
 
@@ -159,75 +102,7 @@ The API will be available at `http://localhost:8001`. Interactive docs at `http:
 
 Base URL: `http://localhost:8001/v1`
 
-### `GET /health`
-Returns `{ "status": "ok" }` — use this to check the service is up.
-
----
-
-### `POST /documents` — Ingest a PDF
-
-Upload a PDF for async ingestion. Returns immediately with a job reference.
-
-**Request:** `multipart/form-data`, field `file` (PDF only)
-
-**Response `202 Accepted`:**
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "pending",
-  "status_url": "/v1/jobs/550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
----
-
-### `GET /jobs/{job_id}` — Poll Job Status
-
-Poll until `status` is `completed` or `failed`. A 2–5 second interval is reasonable.
-
-**Response `200 OK`:**
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "completed",
-  "filename": "document.pdf",
-  "document_id": "aabbccdd-1234-5678-abcd-000000000000",
-  "num_chunks": 15,
-  "error": null
-}
-```
-
----
-
-### `POST /query` — Hybrid Search
-
-**Request body:**
-```json
-{
-  "query": "engine compression ratio",
-  "top_k": 5
-}
-```
-
-**Response `200 OK`:**
-```json
-{
-  "query": "engine compression ratio",
-  "results": [
-    {
-      "id": "doc-uuid_chunk_3",
-      "text": "The compression ratio of Chassis 3413GT is 2.1 bars...",
-      "score": 0.94,
-      "metadata": {
-        "chunk_id": "doc-uuid_chunk_3",
-        "section_id": "section-uuid"
-      }
-    }
-  ]
-}
-```
-
----
+The API supports PDF ingestion (async with job polling), hybrid search, and SSE-streamed retrieval visualization. See the full [REST API Reference](docs/restapi.md) for detailed endpoint documentation, request/response schemas, and Postman import instructions.
 
 ## Ingestion Flow
 

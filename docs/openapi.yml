@@ -1,0 +1,560 @@
+openapi: "3.1.0"
+info:
+  title: KI-4-KMU Ingestion API
+  description: |
+    REST API for the KI-4-KMU Ingestion Layer — a Hybrid RAG system combining
+    ChromaDB (vector search) and GraphDB (knowledge graph) for document-grounded
+    question answering over domain-specific PDFs.
+
+    ## Importing into Postman
+
+    1. Open Postman and click **Import**
+    2. Choose the **Link** tab and paste the file path `docs/openapi.yml`
+       (or upload the file directly via the **Upload** tab)
+    3. Postman will parse the OpenAPI 3.1 spec and create a new collection
+       named **KI-4-KMU Ingestion API** with all endpoints organized by path
+    4. Create a new environment (or use Variables) and set:
+
+       | Variable       | Value                  |
+       |----------------|------------------------|
+       | `base_url`     | `http://localhost:8001`|
+       | `job_id`       | *(empty — filled by POST /documents)* |
+
+    5. Select the environment in the top-right dropdown before sending requests
+
+    ## Importing into other tools
+
+    - **curl**: `curl -X POST https://api.getpostman.com/collections -H "X-Api-Key: YOUR_KEY" -d '{"collection": {"info": {"name": "KI-4-KMU Ingestion API"}}}'` then upload this file
+    - **Insomnia**: File > Import > Select this YAML file
+    - **Swagger UI**: Navigate to `http://localhost:8001/docs` when the server is running (FastAPI serves auto-generated Swagger UI)
+  version: "1.0.0"
+  contact:
+    name: KI-4-KMU Project
+    url: "https://www.ki-zentrum.ch/2025/07/03/fhnw-ki-praxisleitfaden-und-ki-canvas-ki-4-kmu-methode/"
+servers:
+  - url: "http://localhost:8001"
+    description: Local development server
+paths:
+  /v1/health:
+    get:
+      summary: Health check
+      description: Returns a simple status indicator to verify the service is running.
+      operationId: getHealth
+      tags:
+        - System
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+        "503":
+          description: Service is unhealthy or dependencies are unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthErrorResponse"
+              example:
+                status: error
+                detail: Dependency unhealthy
+
+  /v1/documents:
+    post:
+      summary: Ingest a PDF document
+      description: |
+        Upload a PDF for asynchronous ingestion. The endpoint returns immediately
+        with a `job_id` that can be used to poll the processing status via
+        `GET /v1/jobs/{job_id}`.
+
+        The ingestion pipeline performs:
+        1. PDF parsing via PyMuPDF4LLM
+        2. Section extraction using an SLM (Gemma-4-E4B)
+        3. Text chunking and embedding via pplx-embed-v1-0.6B
+        4. Concept and keyphrase extraction
+        5. Storage in ChromaDB (vectors) and GraphDB (knowledge graph)
+
+        Typical ingestion time: 10–60 seconds depending on document size.
+      operationId: ingestDocument
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF file to ingest
+              required:
+                - file
+            example:
+              file: "manual.pdf"
+      responses:
+        "202":
+          description: |
+            Acceptance acknowledged. The document is queued for processing.
+            The `Location` header points to the job status endpoint.
+          headers:
+            Location:
+              description: URL to poll for job status.
+              schema:
+                type: string
+                example: "/v1/jobs/550e8400-e29b-41d4-a716-446655440000"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAccepted"
+              example:
+                job_id: "550e8400-e29b-41d4-a716-446655440000"
+                status: pending
+                status_url: "/v1/jobs/550e8400-e29b-41d4-a716-446655440000"
+        "400":
+          description: Bad request — the uploaded file is not a PDF.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: The uploaded file must be a PDF.
+        "422":
+          description: Validation error — no file provided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+
+  /v1/jobs/{job_id}:
+    get:
+      summary: Poll job status
+      description: |
+        Poll this endpoint until the job `status` is `completed` or `failed`.
+        A 2–5 second polling interval is recommended.
+
+        **Job lifecycle:**
+
+        ```
+        pending → processing → completed
+                   ↓
+                  failed
+        ```
+
+        During `processing`, the `stage` field indicates the current pipeline step.
+      operationId: getJobStatus
+      tags:
+        - Jobs
+      parameters:
+        - name: job_id
+          in: path
+          description: UUID of the ingestion job.
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        "200":
+          description: Job status retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatusResponse"
+              examples:
+                completed:
+                  summary: Completed job
+                  value:
+                    job_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: completed
+                    stage: completed
+                    filename: "manual.pdf"
+                    document_id: "aabbccdd-1234-5678-abcd-000000000000"
+                    num_chunks: 15
+                    error: null
+                failed:
+                  summary: Failed job
+                  value:
+                    job_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: failed
+                    stage: writing_graphdb
+                    filename: "manual.pdf"
+                    document_id: null
+                    num_chunks: null
+                    error: "Connection refused to GraphDB"
+                processing:
+                  summary: Still processing
+                  value:
+                    job_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: processing
+                    stage: extracting_sections
+                    filename: "manual.pdf"
+                    document_id: null
+                    num_chunks: null
+                    error: null
+        "404":
+          description: Job not found — the job_id does not exist or has expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: Job not found.
+
+  /v1/query:
+    post:
+      summary: Hybrid search
+      description: |
+        Execute a hybrid search across both ChromaDB (vector semantic search)
+        and GraphDB (keyword / concept / co-occurrence traversal). Results from
+        both arms are merged, deduplicated, and reranked by Qwen3-Reranker-0.6B
+        down to `top_k`.
+
+        **Retrieval pipeline:**
+
+        | Stage | Source | Description |
+        |-------|--------|-------------|
+        | 1 | ChromaDB | Embedding-similar sections (up to `max_vector_results`) |
+        | 2 | GraphDB | Concept/keyphrase keyword match (up to `max_graph_results`) |
+        | 3 | GraphDB | 2-hop concept traversal — sections sharing concepts |
+        | 4 | GraphDB | 3-hop co-occurrence traversal — thematically adjacent sections |
+        | 5 | Reranker | Qwen3-Reranker-0.6B ranks merged pool to `max_results_total` |
+      operationId: queryDocuments
+      tags:
+        - Query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+            examples:
+              basic:
+                summary: Basic query
+                value:
+                  query: "engine compression ratio"
+                  top_k: 5
+              explicit_params:
+                summary: Query with explicit parameters
+                value:
+                  query: "GDPR data protection"
+                  top_k: null
+                  max_vector_results: 10
+                  max_graph_results: 5
+                  max_results_total: 8
+      responses:
+        "200":
+          description: Search results returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+              example:
+                query: "engine compression ratio"
+                results:
+                  - id: "doc-uuid_chunk_3"
+                    text: "The compression ratio of Chassis 3413GT is 2.1 bars..."
+                    score: 0.94
+                    metadata:
+                      chunk_id: "doc-uuid_chunk_3"
+                      section_id: "section-uuid"
+                      page_number: 3
+                      source_document: "manual.pdf"
+        "400":
+          description: Bad request — query is empty or whitespace only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: Query must not be empty.
+        "422":
+          description: Validation error — no query provided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+
+  /v1/query/stream:
+    get:
+      summary: Streamed retrieval (SSE)
+      description: |
+        Stream the hybrid retrieval pipeline step-by-step using Server-Sent Events (SSE).
+        This endpoint is used by the [Graph Retrieval Visualizer](http://localhost:8001/static/graph_viz.html)
+        to show each retrieval stage in real time.
+
+        **Event types emitted:**
+
+        | Event | Data |
+        |-------|------|
+        | `vector_results` | Top sections from ChromaDB vector search |
+        | `graph_keyword` | Chunks matched by GraphDB keyword search |
+        | `vector_chunks` | Text chunks resolved from vector sections |
+        | `traversal` | Chunks discovered via graph traversal |
+        | `rerank_done` | Final top-k results after reranking |
+      operationId: streamQuery
+      tags:
+        - Query
+      parameters:
+        - name: query
+          in: query
+          description: Search query string.
+          required: true
+          schema:
+            type: string
+            example: "engine compression ratio"
+        - name: top_k
+          in: query
+          description: Number of final results to return after reranking.
+          required: false
+          schema:
+            type: integer
+            default: 5
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: SSE stream started. Events are sent until `top_k` results are finalized.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: vector_results
+                data: {"nodes": [{"id": "doc-uuid_chunk_3", "label": "doc-uuid_ch", "type": "section", "score": 0.94}]}
+
+                event: graph_keyword
+                data: {"nodes": [{"id": "doc-uuid_chunk_7", "label": "doc-uuid_ch", "type": "kw_chunk"}], "edges": []}
+
+                event: vector_chunks
+                data: {"nodes": [{"id": "doc-uuid_chunk_3", "label": "doc-uuid_ch", "type": "v_chunk"}], "edges": [{"id": "vc_doc-uuid_ch", "source": "section-uuid", "target": "doc-uuid_chunk_3", "via": "contains"}]}
+
+                event: traversal
+                data: {"nodes": [{"id": "doc-uuid_chunk_12", "label": "doc-uuid_ch", "type": "t_chunk"}], "edges": [{"id": "tr_doc-uuid_ch", "source": "doc-uuid_chunk_3", "target": "doc-uuid_chunk_12", "via": "traversal"}]}
+
+                event: rerank_done
+                data: {"top_k": [{"id": "doc-uuid_chunk_3", "score": 0.94, "text_preview": "The compression ratio..."}], "all_ids": [...], "top_ids": ["doc-uuid_chunk_3"]}
+        "400":
+          description: Bad request — query is empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: Query must not be empty.
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Service health status.
+      required:
+        - status
+
+    HealthErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [error]
+          description: Error status.
+        detail:
+          type: string
+          description: Human-readable error detail.
+      required:
+        - status
+
+    JobAccepted:
+      type: object
+      description: Response returned immediately after uploading a PDF.
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the ingestion job.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        status_url:
+          type: string
+          description: URL to poll for job status.
+          example: "/v1/jobs/550e8400-e29b-41d4-a716-446655440000"
+      required:
+        - job_id
+        - status
+        - status_url
+
+    JobStatusResponse:
+      type: object
+      description: Response from polling the job status endpoint.
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        stage:
+          $ref: "#/components/schemas/JobStage"
+        filename:
+          type: string
+          description: Name of the uploaded PDF file.
+          example: "manual.pdf"
+        document_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID assigned to the ingested document (available after completion).
+          example: "aabbccdd-1234-5678-abcd-000000000000"
+        num_chunks:
+          type: integer
+          nullable: true
+          description: Number of text chunks created during ingestion.
+          example: 15
+        error:
+          type: string
+          nullable: true
+          description: Error message if the job failed.
+          example: "Connection refused to GraphDB"
+      required:
+        - job_id
+        - status
+        - filename
+
+    JobStatus:
+      type: string
+      enum:
+        - pending
+        - processing
+        - completed
+        - failed
+      description: Current status of an ingestion job.
+
+    JobStage:
+      type: string
+      enum:
+        - upload_received
+        - chunking_text
+        - extracting_images
+        - storing_chunks
+        - extracting_sections
+        - writing_graphdb
+        - completed
+        - failed
+      description: Current pipeline stage during processing.
+
+    QueryRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The search query string.
+          example: "engine compression ratio"
+        top_k:
+          type: integer
+          nullable: true
+          description: Number of final results. Shorthand for `max_results_total`.
+          example: 5
+        max_vector_results:
+          type: integer
+          description: Maximum candidates from ChromaDB vector search.
+          default: 3
+          example: 10
+        max_graph_results:
+          type: integer
+          description: Maximum candidates from GraphDB keyword search.
+          default: 2
+          example: 5
+        max_results_total:
+          type: integer
+          description: Final number of results after merging and reranking.
+          default: 5
+          example: 8
+      required:
+        - query
+
+    QueryResultItem:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the result chunk (e.g., `doc-uuid_chunk_3`).
+          example: "doc-uuid_chunk_3"
+        text:
+          type: string
+          description: The retrieved text content.
+          example: "The compression ratio of Chassis 3413GT is 2.1 bars..."
+        score:
+          type: number
+          format: float
+          description: Relevance score between 0 and 1 (higher is more relevant).
+          example: 0.94
+        metadata:
+          type: object
+          description: Additional metadata about the result.
+          properties:
+            chunk_id:
+              type: string
+            section_id:
+              type: string
+            page_number:
+              type: integer
+            source_document:
+              type: string
+          additionalProperties: true
+
+    QueryResponse:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The normalized (stripped) query string.
+          example: "engine compression ratio"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueryResultItem"
+      required:
+        - query
+        - results
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Human-readable error description.
+      required:
+        - detail
+
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              msg:
+                type: string
+              type:
+                type: string
+            required:
+              - loc
+              - msg
+              - type
+      required:
+        - detail
