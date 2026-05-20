@@ -33,6 +33,8 @@ EMBEDDING_MODEL_PATH = os.getenv("EMBEDDING_MODEL_PATH", "/ki4kmu_data/embedding
 RERANK_MODEL = os.getenv("RERANK_MODEL", "Qwen/Qwen3-Reranker-0.6B")
 RERANKER_MODEL_PATH = os.getenv("RERANKER_MODEL_PATH", "/ki4kmu_data/reranker-model")
 
+USE_LOCAL_RERANKER = os.getenv("USE_LOCAL_RERANKER", "true").lower() == "true"
+OPENROUTER_RERANK_MODEL = os.getenv("OPENROUTER_RERANK_MODEL", "cohere/rerank-4-fast")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HF_TOKEN = os.getenv("HF_TOKEN")

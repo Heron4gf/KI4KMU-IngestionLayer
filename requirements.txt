@@ -21,6 +21,7 @@ langfuse
 simplemma
 nltk
 accelerate
+openrouter
 
 # Testing
 pytest

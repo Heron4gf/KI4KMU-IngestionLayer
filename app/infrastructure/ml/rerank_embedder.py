@@ -5,9 +5,17 @@ from typing import List
 
 import torch
 from huggingface_hub import snapshot_download
+from openrouter import OpenRouter
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from app.core.config import RERANK_MODEL, RERANKER_MODEL_PATH, HF_TOKEN
+from app.core.config import (
+    RERANK_MODEL,
+    RERANKER_MODEL_PATH,
+    HF_TOKEN,
+    USE_LOCAL_RERANKER,
+    OPENROUTER_API_KEY,
+    OPENROUTER_RERANK_MODEL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,34 +27,22 @@ _SYSTEM_PROMPT = (
 )
 
 
+# ── Local reranker ────────────────────────────────────────────────────────────
+
 def _model_is_cached(path: str) -> bool:
     return any(os.path.isfile(os.path.join(path, f)) for f in WEIGHT_FILES)
 
 
 def _format_input(tokenizer: AutoTokenizer, query: str, document: str) -> str:
-    """Format a query-document pair using the Qwen3-Reranker instruction template."""
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": f"[query]: {query}\n[document]: {document}",
-        },
+        {"role": "user", "content": f"[query]: {query}\n[document]: {document}"},
     ]
-    return tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
+    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
-class RerankEmbedder:
-    """
-    Local reranker using Qwen/Qwen3-Reranker-0.6B.
-
-    Scores each (query, document) pair by computing the log-probability
-    of the 'yes' token from the model's next-token distribution,
-    following the official Qwen3-Reranker inference pattern.
-    """
+class LocalRerankEmbedder:
+    """Local reranker using Qwen/Qwen3-Reranker-0.6B."""
 
     def __init__(self, model_id: str = RERANK_MODEL):
         if not _model_is_cached(RERANKER_MODEL_PATH):
@@ -70,20 +66,15 @@ class RerankEmbedder:
         )
         self._model.eval()
 
-        # Resolve token IDs for 'yes' and 'no' once at init
         self._yes_id = self._tokenizer.convert_tokens_to_ids("yes")
         self._no_id = self._tokenizer.convert_tokens_to_ids("no")
         logger.info(
-            "Reranker ready on %s (yes_id=%d, no_id=%d)",
+            "Local reranker ready on %s (yes_id=%d, no_id=%d)",
             self._device, self._yes_id, self._no_id,
         )
 
     @torch.inference_mode()
     def _score_batch(self, inputs: List[str]) -> List[float]:
-        """
-        Tokenize a batch of pre-formatted prompt strings and return
-        the probability of the 'yes' token for each.
-        """
         encoded = self._tokenizer(
             inputs,
             padding=True,
@@ -92,38 +83,59 @@ class RerankEmbedder:
             return_tensors="pt",
         ).to(self._device)
 
-        logits = self._model(**encoded).logits[:, -1, :]  # (batch, vocab)
+        logits = self._model(**encoded).logits[:, -1, :]
         yes_no_logits = logits[:, [self._yes_id, self._no_id]]
         probs = torch.softmax(yes_no_logits, dim=-1)
-        return probs[:, 0].tolist()  # probability of 'yes'
+        return probs[:, 0].tolist()
 
     async def rerank(self, query: str, documents: List[str], top_n: int) -> List[float]:
-        """
-        Score all documents against the query and return a relevance score
-        list aligned to the original document order.
-        top_n is accepted for API compatibility but all scores are returned;
-        slicing is handled by the caller.
-        """
+        if not documents:
+            return []
+        inputs = [_format_input(self._tokenizer, query, doc) for doc in documents]
+        return self._score_batch(inputs)
+
+
+# ── OpenRouter reranker ───────────────────────────────────────────────────────
+
+class OpenRouterRerankEmbedder:
+    """Reranker backed by OpenRouter's rerank API (cohere/rerank-4-fast)."""
+
+    def __init__(self):
+        if not OPENROUTER_API_KEY:
+            raise ValueError("OPENROUTER_API_KEY is not set")
+        self._client = OpenRouter(api_key=OPENROUTER_API_KEY)
+        self._model = OPENROUTER_RERANK_MODEL
+        logger.info("OpenRouter reranker ready (model=%s)", self._model)
+
+    async def rerank(self, query: str, documents: List[str], top_n: int) -> List[float]:
         if not documents:
             return []
 
-        inputs = [
-            _format_input(self._tokenizer, query, doc) for doc in documents
-        ]
-        # Run synchronously — caller is responsible for wrapping in run_in_executor
-        # if this is called from an async context with a large batch.
-        scores = self._score_batch(inputs)
-        return scores
+        response = self._client.rerank.rerank(
+            model=self._model,
+            query=query,
+            documents=documents,
+            top_n=len(documents),
+        )
 
+        scores_by_index = {r.index: r.relevance_score for r in response.results}
+        return [scores_by_index.get(i, 0.0) for i in range(len(documents))]
 
-_instance: "RerankEmbedder | None" = None
+# ── Singleton factory ─────────────────────────────────────────────────────────
+
+_instance: "LocalRerankEmbedder | OpenRouterRerankEmbedder | None" = None
 _lock = threading.Lock()
 
 
-def get_rerank_embedder() -> "RerankEmbedder":
+def get_rerank_embedder() -> "LocalRerankEmbedder | OpenRouterRerankEmbedder":
     global _instance
     if _instance is None:
         with _lock:
             if _instance is None:
-                _instance = RerankEmbedder()
+                if USE_LOCAL_RERANKER:
+                    logger.info("Using LOCAL reranker")
+                    _instance = LocalRerankEmbedder()
+                else:
+                    logger.info("Using OpenRouter reranker")
+                    _instance = OpenRouterRerankEmbedder()
     return _instance
