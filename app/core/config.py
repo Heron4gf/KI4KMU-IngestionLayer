@@ -28,8 +28,10 @@ CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
+EMBEDDING_MODEL_PATH = os.getenv("EMBEDDING_MODEL_PATH", "/ki4kmu_data/embedding-model")
 
-RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere/rerank-4-pro")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "Qwen/Qwen3-Reranker-0.6B")
+RERANKER_MODEL_PATH = os.getenv("RERANKER_MODEL_PATH", "/ki4kmu_data/reranker-model")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -51,5 +53,3 @@ SECTION_EXTRACTOR_URL = os.getenv("SECTION_EXTRACTOR_URL", "http://section-extra
 PREPROCESSING_READ_TIMEOUT = float(os.getenv("PREPROCESSING_READ_TIMEOUT", "120.0"))
 PREPROCESSING_SPLIT_PAGE_SIZE = int(os.getenv("PREPROCESSING_SPLIT_PAGE_SIZE", "10"))
 PREPROCESSING_SPLIT_CONCURRENCY = int(os.getenv("PREPROCESSING_SPLIT_CONCURRENCY", "3"))
-
-EMBEDDING_MODEL_PATH = os.getenv("EMBEDDING_MODEL_PATH", "/ki4kmu_data/embedding-model")

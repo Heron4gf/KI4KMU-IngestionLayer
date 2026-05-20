@@ -18,18 +18,20 @@ from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
 
-_VECTOR_FETCH_MULTIPLIER = 2
-_GRAPH_FETCH_MULTIPLIER = 2
+# Each retrieval arm fetches up to this many candidates independently.
+# The full pool (up to 3x this across all arms) is then reranked down to top_k.
+# 50-100 is the range recommended by recent literature on reranking pipelines.
+_CANDIDATE_POOL_SIZE = 64
 
 
-async def _vector_search_sections(query: str, top_k: int) -> List[QueryResultItem]:
+async def _vector_search_sections(query: str) -> List[QueryResultItem]:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        None, semantic_search, query, top_k * _VECTOR_FETCH_MULTIPLIER
+        None, semantic_search, query, _CANDIDATE_POOL_SIZE
     )
 
 
-async def _graph_keyword_search_chunks(query: str, top_k: int) -> List[dict]:
+async def _graph_keyword_search_chunks(query: str) -> List[dict]:
     keywords = extract_keyphrases(query)
     if not keywords:
         return []
@@ -46,7 +48,7 @@ async def _graph_keyword_search_chunks(query: str, top_k: int) -> List[dict]:
             continue
         seen.add(cid)
         all_chunks.append(chunk)
-        if len(all_chunks) >= top_k * _GRAPH_FETCH_MULTIPLIER:
+        if len(all_chunks) >= _CANDIDATE_POOL_SIZE:
             break
 
     return all_chunks
@@ -54,7 +56,6 @@ async def _graph_keyword_search_chunks(query: str, top_k: int) -> List[dict]:
 
 async def _graph_traversal_expand_chunks(
     vector_results: List[QueryResultItem],
-    top_k: int,
 ) -> List[dict]:
     """
     Graph traversal expansion: for each section returned by vector search,
@@ -89,7 +90,7 @@ async def _graph_traversal_expand_chunks(
                 continue
             seen_chunks.add(cid)
             expanded.append(chunk)
-            if len(expanded) >= top_k * _GRAPH_FETCH_MULTIPLIER:
+            if len(expanded) >= _CANDIDATE_POOL_SIZE:
                 return expanded
 
     return expanded
@@ -146,7 +147,11 @@ async def _rerank_chunks(query: str, chunks: List[dict], top_k: int) -> List[Que
 
     texts = [c["text"] for c in chunks]
     reranker = get_rerank_embedder()
-    scores = await reranker.rerank(query, texts, top_n=len(texts))
+
+    loop = asyncio.get_event_loop()
+    scores = await loop.run_in_executor(
+        None, lambda: asyncio.run(reranker.rerank(query, texts, top_n=len(texts)))
+    )
 
     scored = sorted(
         [{**chunk, "score": score} for chunk, score in zip(chunks, scores)],
@@ -175,8 +180,8 @@ async def hybrid_search(
     max_graph_results: int = 2,
     max_results_total: int = 5,
 ) -> List[QueryResultItem]:
-    vector_task = _vector_search_sections(query, max_vector_results)
-    graph_task = _graph_keyword_search_chunks(query, max_graph_results)
+    vector_task = _vector_search_sections(query)
+    graph_task = _graph_keyword_search_chunks(query)
 
     vector_results, graph_chunks = await asyncio.gather(vector_task, graph_task)
     logger.info(
@@ -186,7 +191,7 @@ async def hybrid_search(
 
     vector_chunks, traversal_chunks = await asyncio.gather(
         _resolve_vector_sections_to_chunks(vector_results),
-        _graph_traversal_expand_chunks(vector_results, max_graph_results),
+        _graph_traversal_expand_chunks(vector_results),
     )
     logger.info(
         "[QUERY] Vector resolved: %d chunks, Graph traversal expanded: %d chunks",

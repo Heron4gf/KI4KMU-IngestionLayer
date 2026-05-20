@@ -17,7 +17,7 @@ Neither vector search nor graph search is sufficient on its own:
 | ✅ Strengths | Semantic understanding, natural language queries | Keyword & keyphrase matching, structured traversal |
 | ❌ Weaknesses | Domain-specific terms, exact keyword lookup | Semantic ranking, cross-lingual queries |
 
-A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes tagged with `chassis` or `compression`. The two result sets are merged and reranked by `cohere/rerank-4-pro` — a larger, multilingual embedding model than the one used for ingestion — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
+A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes tagged with `chassis` or `compression`. The two result sets are merged and reranked — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
 
 ### Visual Graph Examples
 
@@ -29,7 +29,9 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 - **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
 - **Graph Traversal**: Multi-hop tag traversal and tag co-occurrence expansion enrich retrieval beyond what vector search alone can reach
-- **Multilingual Reranking**: `cohere/rerank-4-pro` via OpenRouter handles cross-lingual queries
+- **Large Candidate Pool**: Each retrieval arm independently fetches up to 64 candidates (50–100 range recommended by recent literature), then the full merged pool is reranked down to `top_k`
+- **Local-first Reranking**: Reranking via local [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) — no external API dependency at query time
+- **Multilingual**: Both the text embedder and reranker support multilingual input
 - **Observability**: Full tracing and evaluation support via [Langfuse](https://langfuse.com/)
 - **Local-first**: Designed to run fully on-premise using open-weight models; external APIs can be swapped with local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
 - **RESTful API**: Clean, versioned REST API with async job conventions
@@ -44,7 +46,7 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 | Knowledge Graph | [GraphDB (Ontotext)](https://graphdb.ontotext.com/) |
 | Text Embedding | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b) |
 | Section Extraction SLM | [Gemma-4-9B](https://huggingface.co/google/gemma-4-9b) |
-| Reranking | [cohere/rerank-4-pro](https://openrouter.ai/cohere/rerank-4-pro) via OpenRouter |
+| Reranking | [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) (local) |
 | Observability | [Langfuse](https://langfuse.com/) |
 | PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
 
@@ -96,15 +98,15 @@ This retrieves chunks about *topics that tend to go with* the seed section's tag
 
 ### Retrieval pipeline
 
-The three retrieval sources are merged and deduped before reranking:
+Each arm independently fetches up to `_CANDIDATE_POOL_SIZE` (default: 64) candidates. The merged, deduplicated pool is reranked by Qwen3-Reranker-0.6B down to `top_k`.
 
 | Stage | Source | What it finds |
 |---|---|---|
-| 1 | Chroma vector search | Embedding-similar sections |
-| 2 | Graph keyword search | Sections whose tags/keyphrases match query terms |
-| 3 | 2-hop tag traversal | Sections sharing tags with vector results |
-| 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results |
-| 5 | `cohere/rerank-4-pro` | Final ranked top-k from merged pool |
+| 1 | Chroma vector search | Embedding-similar sections (up to 64) |
+| 2 | Graph keyword search | Sections whose tags/keyphrases match query terms (up to 64) |
+| 3 | 2-hop tag traversal | Sections sharing tags with vector results (up to 64) |
+| 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results (up to 64) |
+| 5 | Qwen3-Reranker-0.6B | Final ranked top-k from merged pool |
 
 ## Installation
 
