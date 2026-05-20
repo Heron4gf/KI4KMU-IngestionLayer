@@ -89,8 +89,8 @@ async def _stream_retrieval(query: str, top_k: int) -> AsyncGenerator[str, None]
     yield sse("traversal", {
         "nodes": [{"id": c["chunk_id"], "label": c["chunk_id"][:12], "type": "t_chunk"} for c in traversal_chunks],
         "edges": [
-            {"id": f"tr_{c['chunk_id']}", "source": c.get("via_tag", c.get("section_id", "graph")), "target": c["chunk_id"], "via": "traversal"}
-            for c in traversal_chunks if c.get("via_tag") or c.get("section_id")
+            {"id": f"tr_{c['chunk_id']}", "source": c["seed_section_id"], "target": c["chunk_id"], "via": "traversal"}
+            for c in traversal_chunks if c.get("seed_section_id")
         ],
     })
 

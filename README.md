@@ -29,13 +29,29 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 - **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
 - **Graph Traversal**: Multi-hop concept traversal and concept co-occurrence expansion enrich retrieval beyond what vector search alone can reach
-- **Large Candidate Pool**: Each retrieval arm independently fetches up to 64 candidates (50–100 range recommended by recent literature), then the full merged pool is reranked down to `top_k`
+- **Large Candidate Pool**: Each retrieval arm independently fetches up to 50 candidates (tunable via `VECTOR_TOP_K`), then the full merged pool is reranked down to `top_k`
 - **Local-first Reranking**: Reranking via local [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) — no external API dependency at query time
 - **Multilingual**: Both the text embedder and reranker support multilingual input
 - **Observability**: Full tracing and evaluation support via [Langfuse](https://langfuse.com/)
 - **Local-first**: Designed to run fully on-premise using open-weight models; external APIs can be swapped with local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
 - **RESTful API**: Clean, versioned REST API with async job conventions
 - **Docker**: Fully containerized via Docker Compose
+
+## Graph Retrieval Visualizer
+
+A live, step-by-step visualization of the hybrid retrieval pipeline is available at:
+
+**http://localhost:8001/static/graph_viz.html**
+
+After starting the services, enter a query and press **Run** to watch each stage unfold in real time via SSE:
+
+1. **Vector search** — sections with highest embedding similarity
+2. **Graph keyword** — chunks matched by concept/keyphrase lookup
+3. **Resolve chunks** — vector sections resolved to their constituent text chunks
+4. **Graph traversal** — chunks discovered via 2-hop concept and 3-hop co-occurrence hops
+5. **Rerank** — final top-k results highlighted in the graph
+
+Edges visually connect traversal chunks back to their seed vector sections, telling the multi-hop retrieval story.
 
 ## Technologies
 
@@ -61,14 +77,21 @@ The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent
 - `Concept` — a retrieval label assigned to a section by the SLM (e.g. `"compression"`, `"GDPR"`)
 - `Keyphrase` — a lemmatized keyword algorithmically extracted from section text
 
-**Key relationships:**
+**Object properties (relationships):**
 - `Chunk` → `belongsTo` → `Document`
-- `Section` → `isContained` → `Chunk`
+- `Chunk` / `Text` / `Image` → `isContained` → `Section` *(direction: chunk is contained in section)*
 - `Section` → `hasConcept` → `Concept`
 - `Text` → `hasKeyphrase` → `Keyphrase`
 - `Concept` ↔ `coOccursWith` ↔ `Concept` *(built post-ingestion, symmetric)*
 
-This structure means a query can reach relevant text chunks either by traversing concepts/keyphrases (graph path) or by finding the section in the vector DB and then fetching its parent chunk (vector path).
+**Datatype properties:**
+- `Document`: `document_id` (string), `pdf_hash` (string)
+- `Chunk`: `text` (string), `chunk_index` (integer), `page_number` (integer)
+- `Section`: `section_id` (string), `section_uuid` (string)
+- `Image`: `image_base64` (string), `page_number` (integer)
+- `Concept`: `concept_label` (string)
+
+This structure means a query can reach relevant text chunks either by traversing concepts/keyphrases (graph path) or by finding the section in the vector DB and then fetching its child chunks (vector path).
 
 ## Graph Traversal
 
@@ -98,14 +121,14 @@ This retrieves chunks about *topics that tend to go with* the seed section's con
 
 ### Retrieval pipeline
 
-Each arm independently fetches up to `_CANDIDATE_POOL_SIZE` (default: 64) candidates. The merged, deduplicated pool is reranked by Qwen3-Reranker-0.6B down to `top_k`.
+Each arm independently fetches up to `VECTOR_TOP_K` (default: 50) candidates. The merged, deduplicated pool is reranked by Qwen3-Reranker-0.6B down to `top_k`. Traversal expansion stops after collecting `TRAVERSAL_LIMIT` (default: 100) unique chunks.
 
 | Stage | Source | What it finds |
 |---|---|---|
-| 1 | Chroma vector search | Embedding-similar sections (up to 64) |
-| 2 | Graph keyword search | Sections whose concepts/keyphrases match query terms (up to 64) |
-| 3 | 2-hop concept traversal | Sections sharing concepts with vector results (up to 64) |
-| 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results (up to 64) |
+| 1 | Chroma vector search | Embedding-similar sections (up to 50) |
+| 2 | Graph keyword search | Sections whose concepts/keyphrases match query terms (up to 50) |
+| 3 | 2-hop concept traversal | Sections sharing concepts with vector results (up to 100 total) |
+| 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results (up to 100 total) |
 | 5 | Qwen3-Reranker-0.6B | Final ranked top-k from merged pool |
 
 ## Installation

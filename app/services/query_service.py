@@ -18,16 +18,17 @@ from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
 
-# Each retrieval arm fetches up to this many candidates independently.
-# The full pool (up to 3x this across all arms) is then reranked down to top_k.
-# 50-100 is the range recommended by recent literature on reranking pipelines.
-_CANDIDATE_POOL_SIZE = 64
+# How many top sections to fetch from the vector (embedding) search.
+VECTOR_TOP_K = 50
+
+# How many traversal chunks to collect per seed section before stopping.
+TRAVERSAL_LIMIT = 100
 
 
 async def _vector_search_sections(query: str) -> List[QueryResultItem]:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        None, semantic_search, query, _CANDIDATE_POOL_SIZE
+        None, semantic_search, query, VECTOR_TOP_K
     )
 
 
@@ -48,7 +49,7 @@ async def _graph_keyword_search_chunks(query: str) -> List[dict]:
             continue
         seen.add(cid)
         all_chunks.append(chunk)
-        if len(all_chunks) >= _CANDIDATE_POOL_SIZE:
+        if len(all_chunks) >= VECTOR_TOP_K:
             break
 
     return all_chunks
@@ -63,6 +64,9 @@ async def _graph_traversal_expand_chunks(
 
     - 2-hop: seed_section -> shared Concept <- other_section -> chunk
     - 3-hop: seed_section -> Concept_A -[coOccursWith]-> Concept_B <- other_section -> chunk
+
+    Each returned chunk carries a ``seed_section_id`` field so the caller can
+    emit (seed → neighbor) edges for the visualisation.
     """
     loop = asyncio.get_event_loop()
     seen_sections: set[str] = set()
@@ -89,8 +93,9 @@ async def _graph_traversal_expand_chunks(
             if cid in seen_chunks:
                 continue
             seen_chunks.add(cid)
+            chunk["seed_section_id"] = section_id
             expanded.append(chunk)
-            if len(expanded) >= _CANDIDATE_POOL_SIZE:
+            if len(expanded) >= TRAVERSAL_LIMIT:
                 return expanded
 
     return expanded

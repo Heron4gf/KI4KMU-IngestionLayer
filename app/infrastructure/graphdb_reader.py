@@ -172,6 +172,7 @@ def get_related_chunks_via_concepts(section_id: str) -> List[dict]:
     """
     2-hop traversal: seed_section -> shared Concept <- other_section -> chunk.
     Returns chunks from all sections that share at least one concept with the seed section.
+    Each result carries ``seed_section_id`` so callers can wire (seed → neighbor) edges.
     """
     section_uri = _uri(section_id)
     query = load_and_parse(
@@ -193,6 +194,7 @@ def get_related_chunks_via_concepts(section_id: str) -> List[dict]:
             "chunk_index": int(row["relatedIndex"]["value"]),
             "section_id": row["relatedSection"]["value"].replace(BASE_NS, ""),
             "via_concept": row["sharedConcept"]["value"].replace(BASE_NS, ""),
+            "seed_section_id": section_id,
         })
     return results
 
@@ -202,6 +204,7 @@ def get_related_chunks_via_cooccurrence(section_id: str) -> List[dict]:
     3-hop traversal: seed_section -> Concept_A -[coOccursWith]-> Concept_B <- other_section -> chunk.
     Returns chunks from sections with concepts that co-occur with the seed section's concepts.
     Requires build_concept_cooccurrence() to have been run after ingestion.
+    Each result carries ``seed_section_id`` so callers can wire (seed → neighbor) edges.
     """
     section_uri = _uri(section_id)
     query = load_and_parse(
@@ -223,5 +226,6 @@ def get_related_chunks_via_cooccurrence(section_id: str) -> List[dict]:
             "chunk_index": int(row["relatedIndex"]["value"]),
             "section_id": row["relatedSection"]["value"].replace(BASE_NS, ""),
             "via_concept": row["bridgeConcept"]["value"].replace(BASE_NS, ""),
+            "seed_section_id": section_id,
         })
     return results
