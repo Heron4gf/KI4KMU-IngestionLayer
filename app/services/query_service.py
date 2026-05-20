@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 VECTOR_TOP_K = 50
 
 # How many traversal chunks to collect per seed section before stopping.
-TRAVERSAL_LIMIT = 100
+TRAVERSAL_LIMIT = 200
 
 
 async def _vector_search_sections(query: str) -> List[QueryResultItem]:
