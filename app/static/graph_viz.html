@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KI4KMU — Retrieval Visualizer</title>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<style>
+  :root {
+    --bg: #171614;
+    --surface: #1c1b19;
+    --surface-2: #222120;
+    --border: #393836;
+    --text: #cdccca;
+    --text-muted: #797876;
+    --text-faint: #4a4948;
+    --primary: #4f98a3;
+    --primary-hl: #313b3b;
+    --success: #6daa45;
+    --gold: #e8af34;
+    --purple: #a86fdf;
+    --orange: #fdab43;
+    --error: #d163a7;
+    --radius: 0.5rem;
+    --transition: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+  .layout { display: grid; grid-template-columns: 320px 1fr; grid-template-rows: 100vh; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .logo svg { color: var(--primary); }
+  .logo-text { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+  .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+  .query-form { display: flex; flex-direction: column; gap: 10px; }
+  .query-form label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .query-input {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 9px 12px;
+    font-size: 13px;
+    resize: none;
+    height: 72px;
+    transition: border-color var(--transition);
+    line-height: 1.5;
+  }
+  .query-input:focus { outline: none; border-color: var(--primary); }
+  .form-row { display: flex; gap: 8px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .field input {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 13px;
+    width: 100%;
+    transition: border-color var(--transition);
+  }
+  .field input:focus { outline: none; border-color: var(--primary); }
+  .btn-run {
+    background: var(--primary);
+    color: #0e1f21;
+    font-weight: 600;
+    font-size: 13px;
+    border: none;
+    border-radius: var(--radius);
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: background var(--transition);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-run:hover { background: #3d8a95; }
+  .btn-run:disabled { background: var(--border); color: var(--text-faint); cursor: not-allowed; }
+
+  /* ── Pipeline stages ── */
+  .stages {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .stages-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .stage {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    background: transparent;
+    transition: background var(--transition);
+  }
+  .stage.active { background: color-mix(in oklch, var(--primary) 8%, var(--surface)); }
+  .stage.done { background: color-mix(in oklch, var(--success) 6%, var(--surface)); }
+  .stage-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+    transition: background var(--transition);
+  }
+  .stage.active .stage-dot { background: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 25%, transparent); }
+  .stage.done .stage-dot { background: var(--success); }
+  .stage-name { font-size: 12px; color: var(--text-muted); flex: 1; }
+  .stage.active .stage-name { color: var(--text); }
+  .stage.done .stage-name { color: var(--text-muted); }
+  .stage-count {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-faint);
+    background: var(--surface-2);
+    padding: 2px 6px;
+    border-radius: 999px;
+  }
+  .stage.active .stage-count { color: var(--primary); }
+  .stage.done .stage-count { color: var(--success); }
+
+  /* ── Legend ── */
+  .legend {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; flex-wrap: wrap; gap: 10px;
+    flex-shrink: 0;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Results panel ── */
+  .results-panel { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .results-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+  .result-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .result-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .result-rank { font-size: 11px; font-weight: 700; color: var(--gold); }
+  .result-score {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--success);
+    background: color-mix(in oklch, var(--success) 10%, var(--surface));
+    padding: 2px 6px; border-radius: 999px;
+  }
+  .result-id { font-size: 10px; color: var(--text-faint); font-family: monospace; margin-bottom: 4px; }
+  .result-text { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+  .empty-results { text-align: center; padding: 32px 0; color: var(--text-faint); font-size: 12px; }
+
+  /* ── Graph canvas ── */
+  .graph-area {
+    position: relative;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  #cy { width: 100%; height: 100%; }
+  .graph-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-faint);
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  .graph-overlay.hidden { opacity: 0; }
+  .graph-overlay-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.3; }
+  .graph-overlay-text { font-size: 13px; line-height: 1.6; }
+  .graph-controls {
+    position: absolute; bottom: 16px; right: 16px;
+    display: flex; gap: 6px;
+  }
+  .ctrl-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color var(--transition), border-color var(--transition);
+  }
+  .ctrl-btn:hover { color: var(--text); border-color: var(--primary); }
+  .status-bar {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    white-space: nowrap;
+  }
+  .status-bar.visible { opacity: 1; }
+  .status-bar.success { color: var(--success); border-color: color-mix(in oklch, var(--success) 30%, var(--border)); }
+
+  /* ── Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  .spinner.visible { display: block; }
+
+  /* ── Pulse on active dot ── */
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 40%, transparent); }
+    70%  { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  .stage.active .stage-dot { animation: pulse-ring 1.4s ease-out infinite; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="KI4KMU">
+          <rect x="1" y="1" width="26" height="26" rx="6" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="14" cy="9" r="3" fill="currentColor" opacity="0.9"/>
+          <circle cx="7" cy="20" r="2.5" fill="currentColor" opacity="0.6"/>
+          <circle cx="21" cy="20" r="2.5" fill="currentColor" opacity="0.6"/>
+          <line x1="14" y1="12" x2="7" y2="17.5" stroke="currentColor" stroke-width="1.2" opacity="0.5"/>
+          <line x1="14" y1="12" x2="21" y2="17.5" stroke="currentColor" stroke-width="1.2" opacity="0.5"/>
+        </svg>
+        <div>
+          <div class="logo-text">KI4KMU</div>
+          <div class="logo-sub">Retrieval Visualizer</div>
+        </div>
+      </div>
+
+      <div class="query-form">
+        <label for="query-input">Query</label>
+        <textarea id="query-input" class="query-input" placeholder="Enter your query..."></textarea>
+        <div class="form-row">
+          <div class="field">
+            <label for="top-k">top_k</label>
+            <input type="number" id="top-k" value="5" min="1" max="20">
+          </div>
+          <button id="run-btn" class="btn-run">Run</button>
+          <div class="spinner" id="spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stages" id="stages">
+      <div class="stages-title">Pipeline</div>
+      <div class="stage" id="stage-vector_results" data-stage="vector_results">
+        <div class="stage-dot"></div>
+        <span class="stage-name">Vector search</span>
+        <span class="stage-count" id="cnt-vector_results">—</span>
+      </div>
+      <div class="stage" id="stage-graph_keyword" data-stage="graph_keyword">
+        <div class="stage-dot"></div>
+        <span class="stage-name">Graph keyword</span>
+        <span class="stage-count" id="cnt-graph_keyword">—</span>
+      </div>
+      <div class="stage" id="stage-vector_chunks" data-stage="vector_chunks">
+        <div class="stage-dot"></div>
+        <span class="stage-name">Resolve chunks</span>
+        <span class="stage-count" id="cnt-vector_chunks">—</span>
+      </div>
+      <div class="stage" id="stage-traversal" data-stage="traversal">
+        <div class="stage-dot"></div>
+        <span class="stage-name">Graph traversal</span>
+        <span class="stage-count" id="cnt-traversal">—</span>
+      </div>
+      <div class="stage" id="stage-rerank_done" data-stage="rerank_done">
+        <div class="stage-dot"></div>
+        <span class="stage-name">Rerank</span>
+        <span class="stage-count" id="cnt-rerank_done">—</span>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#4f98a3"></div>Section</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6daa45"></div>Vector chunk</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#e8af34"></div>KW chunk</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a86fdf"></div>Traversal chunk</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fdab43; border: 2px solid #fff"></div>Top-k</div>
+    </div>
+
+    <div class="results-panel">
+      <div class="results-title">Top-k Results</div>
+      <div id="results-list"><div class="empty-results">Results appear after reranking.</div></div>
+    </div>
+  </aside>
+
+  <!-- ── Graph canvas ── -->
+  <main class="graph-area">
+    <div id="cy"></div>
+    <div class="graph-overlay" id="graph-overlay">
+      <div class="graph-overlay-icon">⬡</div>
+      <div class="graph-overlay-text">Enter a query and press Run<br>to watch the retrieval unfold.</div>
+    </div>
+    <div class="status-bar" id="status-bar"></div>
+    <div class="graph-controls">
+      <button class="ctrl-btn" id="btn-fit">Fit</button>
+      <button class="ctrl-btn" id="btn-reset">Reset</button>
+    </div>
+  </main>
+</div>
+
+<script>
+  const NODE_COLORS = {
+    section:  '#4f98a3',
+    v_chunk:  '#6daa45',
+    kw_chunk: '#e8af34',
+    t_chunk:  '#a86fdf',
+    topk:     '#fdab43',
+  };
+  const EDGE_COLORS = {
+    contains:  '#4f98a350',
+    keyword:   '#e8af3450',
+    traversal: '#a86fdf50',
+  };
+
+  const cy = cytoscape({
+    container: document.getElementById('cy'),
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color': 'data(color)',
+          'label': 'data(label)',
+          'color': '#cdccca',
+          'font-size': '9px',
+          'font-family': 'monospace',
+          'text-valign': 'bottom',
+          'text-margin-y': '4px',
+          'width': 18,
+          'height': 18,
+          'border-width': 0,
+          'transition-property': 'background-color, border-width, width, height, opacity',
+          'transition-duration': '300ms',
+        }
+      },
+      {
+        selector: 'node.topk',
+        style: {
+          'background-color': NODE_COLORS.topk,
+          'border-width': 2,
+          'border-color': '#ffffff40',
+          'width': 26,
+          'height': 26,
+        }
+      },
+      {
+        selector: 'node.faded',
+        style: { 'opacity': 0.15 }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 1,
+          'line-color': 'data(color)',
+          'target-arrow-color': 'data(color)',
+          'target-arrow-shape': 'vee',
+          'curve-style': 'bezier',
+          'opacity': 0.6,
+        }
+      }
+    ],
+    layout: { name: 'preset' },
+    userZoomingEnabled: true,
+    userPanningEnabled: true,
+    boxSelectionEnabled: false,
+  });
+
+  let currentStage = null;
+  let eventSource = null;
+
+  function setStatus(msg, type = '') {
+    const bar = document.getElementById('status-bar');
+    bar.textContent = msg;
+    bar.className = 'status-bar visible ' + type;
+  }
+
+  function hideStatus() {
+    document.getElementById('status-bar').className = 'status-bar';
+  }
+
+  function setStageActive(name) {
+    document.querySelectorAll('.stage').forEach(el => {
+      if (el.dataset.stage === currentStage) el.classList.replace('active', 'done');
+    });
+    currentStage = name;
+    const el = document.getElementById('stage-' + name);
+    if (el) el.classList.add('active');
+  }
+
+  function setStageCount(name, count) {
+    const el = document.getElementById('cnt-' + name);
+    if (el) el.textContent = count;
+  }
+
+  function resetStages() {
+    document.querySelectorAll('.stage').forEach(el => {
+      el.classList.remove('active', 'done');
+    });
+    document.querySelectorAll('.stage-count').forEach(el => el.textContent = '—');
+    currentStage = null;
+  }
+
+  function safeAddNode(id, label, type) {
+    if (!cy.getElementById(id).length) {
+      cy.add({ group: 'nodes', data: { id, label, color: NODE_COLORS[type] || '#797876' } });
+    }
+  }
+
+  function safeAddEdge(id, source, target, via) {
+    if (!cy.getElementById(id).length && cy.getElementById(source).length && cy.getElementById(target).length) {
+      cy.add({ group: 'edges', data: { id, source, target, color: EDGE_COLORS[via] || '#39383650' } });
+    }
+  }
+
+  function runLayout() {
+    cy.layout({
+      name: 'cose',
+      animate: true,
+      animationDuration: 500,
+      fit: true,
+      padding: 40,
+      nodeRepulsion: 6000,
+      idealEdgeLength: 80,
+      edgeElasticity: 100,
+      gravity: 0.4,
+      randomize: false,
+      componentSpacing: 60,
+    }).run();
+  }
+
+  function renderResults(topK) {
+    const list = document.getElementById('results-list');
+    if (!topK.length) { list.innerHTML = '<div class="empty-results">No results.</div>'; return; }
+    list.innerHTML = topK.map((r, i) => `
+      <div class="result-card">
+        <div class="result-card-header">
+          <span class="result-rank">#${i + 1}</span>
+          <span class="result-score">${(r.score * 100).toFixed(1)}%</span>
+        </div>
+        <div class="result-id">${r.id}</div>
+        <div class="result-text">${r.text_preview || '—'}</div>
+      </div>`).join('');
+  }
+
+  function startStream(query, topK) {
+    if (eventSource) eventSource.close();
+    cy.elements().remove();
+    resetStages();
+    document.getElementById('results-list').innerHTML = '<div class="empty-results">Waiting for reranking...</div>';
+    document.getElementById('graph-overlay').classList.add('hidden');
+
+    const runBtn = document.getElementById('run-btn');
+    const spinner = document.getElementById('spinner');
+    runBtn.disabled = true;
+    spinner.classList.add('visible');
+    setStatus('Connecting...');
+
+    const url = `/v1/query/stream?query=${encodeURIComponent(query)}&top_k=${topK}`;
+    eventSource = new EventSource(url);
+
+    eventSource.addEventListener('vector_results', e => {
+      const { nodes } = JSON.parse(e.data);
+      setStageActive('vector_results');
+      setStatus('Vector search complete — ' + nodes.length + ' sections found');
+      nodes.forEach(n => safeAddNode(n.id, n.label, 'section'));
+      setStageCount('vector_results', nodes.length);
+      runLayout();
+    });
+
+    eventSource.addEventListener('graph_keyword', e => {
+      const { nodes, edges } = JSON.parse(e.data);
+      setStageActive('graph_keyword');
+      setStatus('Graph keyword — ' + nodes.length + ' chunks');
+      nodes.forEach(n => safeAddNode(n.id, n.label, 'kw_chunk'));
+      edges.forEach(ed => safeAddEdge(ed.id, ed.source, ed.target, ed.via));
+      setStageCount('graph_keyword', nodes.length);
+      runLayout();
+    });
+
+    eventSource.addEventListener('vector_chunks', e => {
+      const { nodes, edges } = JSON.parse(e.data);
+      setStageActive('vector_chunks');
+      setStatus('Resolved ' + nodes.length + ' vector chunks');
+      nodes.forEach(n => safeAddNode(n.id, n.label, 'v_chunk'));
+      edges.forEach(ed => safeAddEdge(ed.id, ed.source, ed.target, ed.via));
+      setStageCount('vector_chunks', nodes.length);
+      runLayout();
+    });
+
+    eventSource.addEventListener('traversal', e => {
+      const { nodes, edges } = JSON.parse(e.data);
+      setStageActive('traversal');
+      setStatus('Graph traversal — ' + nodes.length + ' expanded chunks');
+      nodes.forEach(n => safeAddNode(n.id, n.label, 't_chunk'));
+      edges.forEach(ed => safeAddEdge(ed.id, ed.source, ed.target, ed.via));
+      setStageCount('traversal', nodes.length);
+      runLayout();
+    });
+
+    eventSource.addEventListener('rerank_done', e => {
+      const { top_k, all_ids, top_ids } = JSON.parse(e.data);
+      setStageActive('rerank_done');
+      const topSet = new Set(top_ids);
+
+      cy.nodes().forEach(node => {
+        if (topSet.has(node.id())) {
+          node.addClass('topk');
+          node.removeClass('faded');
+        } else {
+          node.addClass('faded');
+        }
+      });
+
+      setStageCount('rerank_done', top_k.length);
+      setStatus('Done — top ' + top_k.length + ' results reranked', 'success');
+      renderResults(top_k);
+
+      // mark final stage done
+      const el = document.getElementById('stage-rerank_done');
+      if (el) { el.classList.remove('active'); el.classList.add('done'); }
+
+      cy.fit(cy.nodes('.topk'), 80);
+      runBtn.disabled = false;
+      spinner.classList.remove('visible');
+      eventSource.close();
+    });
+
+    eventSource.onerror = () => {
+      setStatus('Stream error — check API connection', '');
+      runBtn.disabled = false;
+      spinner.classList.remove('visible');
+      eventSource.close();
+    };
+  }
+
+  document.getElementById('run-btn').addEventListener('click', () => {
+    const query = document.getElementById('query-input').value.trim();
+    const topK = parseInt(document.getElementById('top-k').value, 10) || 5;
+    if (!query) return;
+    startStream(query, topK);
+  });
+
+  document.getElementById('query-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) document.getElementById('run-btn').click();
+  });
+
+  document.getElementById('btn-fit').addEventListener('click', () => cy.fit(undefined, 40));
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    cy.elements().remove();
+    resetStages();
+    document.getElementById('results-list').innerHTML = '<div class="empty-results">Results appear after reranking.</div>';
+    document.getElementById('graph-overlay').classList.remove('hidden');
+    hideStatus();
+  });
+</script>
+</body>
+</html>
