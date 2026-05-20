@@ -30,8 +30,8 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 TEXT_MODEL = os.getenv("TEXT_EMBEDDING_MODEL", "perplexity-ai/pplx-embed-v1-0.6b")
 EMBEDDING_MODEL_PATH = os.getenv("EMBEDDING_MODEL_PATH", "/ki4kmu_data/embedding-model")
 
-RERANK_MODEL = os.getenv("RERANK_MODEL", "Qwen/Qwen3-Reranker-0.6B")
-RERANKER_MODEL_PATH = os.getenv("RERANKER_MODEL_PATH", "/ki4kmu_data/reranker-model")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ettin-reranker-68m-v1")
+RERANKER_MODEL_PATH = os.getenv("RERANKER_MODEL_PATH", "/ki4kmu_data/reranker-model-weights")
 
 USE_LOCAL_RERANKER = os.getenv("USE_LOCAL_RERANKER", "true").lower() == "true"
 OPENROUTER_RERANK_MODEL = os.getenv("OPENROUTER_RERANK_MODEL", "cohere/rerank-4-fast")
