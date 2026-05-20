@@ -20,6 +20,7 @@ pymupdf4llm
 langfuse
 simplemma
 nltk
+accelerate
 
 # Testing
 pytest
