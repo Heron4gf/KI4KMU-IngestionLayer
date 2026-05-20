@@ -61,8 +61,8 @@ Edges visually connect traversal chunks back to their seed vector sections, tell
 | Vector DB | [ChromaDB](https://www.trychroma.com/) |
 | Knowledge Graph | [GraphDB (Ontotext)](https://graphdb.ontotext.com/) |
 | Text Embedding | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b) |
-| Section Extraction SLM | [Gemma-4-9B](https://huggingface.co/google/gemma-4-9b) |
-| Reranking | [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) (local) |
+| Section Extraction SLM | [Gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) |
+| Reranking | [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) |
 | Observability | [Langfuse](https://langfuse.com/) |
 | PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
 
