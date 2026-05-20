@@ -6,7 +6,7 @@ A Hybrid RAG system combining a Vector Database ([ChromaDB](https://www.trychrom
 
 ## Architecture
 
-![Architecture](./images/ingestion_layer_structure.png)
+![Architecture](./images/architecture.jpg)
 
 ## Why Hybrid?
 
