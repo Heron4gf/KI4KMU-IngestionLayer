@@ -61,11 +61,13 @@ class RerankEmbedder:
         self._tokenizer = AutoTokenizer.from_pretrained(
             RERANKER_MODEL_PATH, padding_side="left"
         )
-        self._model = AutoModelForCausalLM.from_pretrained(
-            RERANKER_MODEL_PATH, torch_dtype=torch.float16
-        )
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._model.to(self._device)
+        dtype = torch.float16 if self._device == "cuda" else torch.float32
+        self._model = AutoModelForCausalLM.from_pretrained(
+            RERANKER_MODEL_PATH,
+            torch_dtype=dtype,
+            device_map=self._device,
+        )
         self._model.eval()
 
         # Resolve token IDs for 'yes' and 'no' once at init
