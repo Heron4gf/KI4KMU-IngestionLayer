@@ -184,20 +184,20 @@ def insert_or_merge_section(section, chunk_id):
                 batch_query = f"{PREFIXES}\nINSERT DATA {{\n{kp_triples}}}"
                 _run_update(batch_query)
 
-    tags = section.get("tags", [])
-    if tags:
-        tag_triples = ""
-        for tag_obj in tags:
-            tag_label = tag_obj.get("label", "")
-            if tag_label:
-                tag_id = _canonical_id(tag_label)
-                tag_uri = _uri(tag_id)
-                tag_triples += f"    {tag_uri} rdf:type ki4kmu:Tag .\n"
-                tag_triples += f"    {tag_uri} rdfs:label {_literal(tag_label)} .\n"
-                tag_triples += f"    {section_uri} ki4kmu:hasTag {tag_uri} .\n"
+    concepts = section.get("concepts", [])
+    if concepts:
+        concept_triples = ""
+        for concept_obj in concepts:
+            concept_label = concept_obj.get("label", "")
+            if concept_label:
+                concept_id = _canonical_id(concept_label)
+                concept_uri = _uri(concept_id)
+                concept_triples += f"    {concept_uri} rdf:type ki4kmu:Concept .\n"
+                concept_triples += f"    {concept_uri} rdfs:label {_literal(concept_label)} .\n"
+                concept_triples += f"    {section_uri} ki4kmu:hasConcept {concept_uri} .\n"
 
-        if tag_triples:
-            batch_query = f"{PREFIXES}\nINSERT DATA {{\n{tag_triples}}}"
+        if concept_triples:
+            batch_query = f"{PREFIXES}\nINSERT DATA {{\n{concept_triples}}}"
             _run_update(batch_query)
 
 
@@ -214,39 +214,39 @@ def insert_text(text_id, text_content, section_uri):
     _run_update(query)
 
 
-def insert_tag(tag_label, section_uri):
-    tag_id = _canonical_id(tag_label)
-    tag_uri = _uri(tag_id)
+def insert_concept(concept_label, section_uri):
+    concept_id = _canonical_id(concept_label)
+    concept_uri = _uri(concept_id)
     query = load_and_parse(
-        "insert_tag.sparql",
+        "insert_concept.sparql",
         PREFIXES=PREFIXES,
-        tag_uri=tag_uri,
-        tag_id=tag_id,
-        tag_label=_literal(tag_label),
+        concept_uri=concept_uri,
+        concept_id=concept_id,
+        concept_label=_literal(concept_label),
         section_uri=section_uri,
     )
     _run_update(query)
 
 
-def build_tag_cooccurrence():
+def build_concept_cooccurrence():
     """
-    For every pair of tags that share a Section, insert a ki4kmu:coOccursWith edge.
+    For every pair of concepts that share a Section, insert a ki4kmu:coOccursWith edge.
     Since ki4kmu:coOccursWith is owl:SymmetricProperty only one direction is needed.
     Call this once at the end of each document ingestion job.
     """
     query = f"""{PREFIXES}
 INSERT {{
-    ?tagA ki4kmu:coOccursWith ?tagB .
+    ?conceptA ki4kmu:coOccursWith ?conceptB .
 }}
 WHERE {{
-    ?section ki4kmu:hasTag ?tagA .
-    ?section ki4kmu:hasTag ?tagB .
-    FILTER(?tagA != ?tagB)
-    FILTER(STR(?tagA) < STR(?tagB))
+    ?section ki4kmu:hasConcept ?conceptA .
+    ?section ki4kmu:hasConcept ?conceptB .
+    FILTER(?conceptA != ?conceptB)
+    FILTER(STR(?conceptA) < STR(?conceptB))
 }}
 """
     _run_update(query)
-    logger.info("[GRAPHDB] Tag co-occurrence edges built")
+    logger.info("[GRAPHDB] Concept co-occurrence edges built")
 
 
 # ---------------------------------------------------------------------------

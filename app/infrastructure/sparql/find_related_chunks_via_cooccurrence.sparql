@@ -1,11 +1,11 @@
 {{PREFIXES}}
 
-SELECT DISTINCT ?relatedSection ?relatedChunk ?relatedText ?relatedIndex ?bridgeTag WHERE {
-    {{seed_section_uri}} ki4kmu:hasTag ?seedTag .
+SELECT DISTINCT ?relatedSection ?relatedChunk ?relatedText ?relatedIndex ?bridgeConcept WHERE {
+    {{seed_section_uri}} ki4kmu:hasConcept ?seedConcept .
 
-    ?seedTag ki4kmu:coOccursWith ?bridgeTag .
+    ?seedConcept ki4kmu:coOccursWith ?bridgeConcept .
 
-    ?relatedSection ki4kmu:hasTag ?bridgeTag ;
+    ?relatedSection ki4kmu:hasConcept ?bridgeConcept ;
                     rdf:type ki4kmu:Section .
     FILTER(?relatedSection != {{seed_section_uri}})
 

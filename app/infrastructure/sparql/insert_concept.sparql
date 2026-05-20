@@ -1,0 +1,6 @@
+{{PREFIXES}}
+INSERT DATA {
+    {{concept_uri}} rdf:type ki4kmu:Concept .
+    {{concept_uri}} rdfs:label {{concept_label}} .
+    {{section_uri}} ki4kmu:hasConcept {{concept_uri}} .
+}

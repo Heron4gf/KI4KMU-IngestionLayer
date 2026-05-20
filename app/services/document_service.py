@@ -9,7 +9,7 @@ from langfuse import observe
 from app.services.preprocessing_service import chunk_pdf_with_preprocessing
 from app.services.image_service import process_images_pipeline
 from app.infrastructure.chroma_repository import document_already_ingested, store_sections_in_chroma, delete_document_sections
-from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section, build_tag_cooccurrence, _uri, _canonical_id
+from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section, build_concept_cooccurrence, _uri, _canonical_id
 from app.infrastructure.job_store import JobStage, update_job
 from app.core.config import SECTION_EXTRACTOR_URL, PREFIXES
 from app.utils.files import file_md5
@@ -93,7 +93,7 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
                 "section_type": "Image",
                 "label": caption[:80],
                 "texts": [{"content": caption}],
-                "tags": [],
+                "concepts": [],
             }
             await asyncio.to_thread(insert_or_merge_section, image_section, "")
             await asyncio.to_thread(insert_image, image_id, document_id, image_b64, image_section_uri, page_number)
@@ -110,8 +110,8 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
         await _stage(JobStage.WRITING_GRAPHDB)
         logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
 
-        # Build tag co-occurrence edges now that all sections are written
-        await asyncio.to_thread(build_tag_cooccurrence)
+        # Build concept co-occurrence edges now that all sections are written
+        await asyncio.to_thread(build_concept_cooccurrence)
 
     except Exception as e:
         logger.error("[SERVICE] GraphDB write failed, rolling back Chroma for document %s: %s", document_id, e)

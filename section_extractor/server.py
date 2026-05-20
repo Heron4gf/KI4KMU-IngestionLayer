@@ -71,7 +71,7 @@ def extract_sections(req: ExtractRequest):
                     section_id=s.section_id,
                     label=s.label,
                     texts=s.texts,
-                    tags=s.tags,
+                    concepts=s.concepts,
                     uuid=str(uuid.uuid4()),
                 )
                 for s in llm_sections

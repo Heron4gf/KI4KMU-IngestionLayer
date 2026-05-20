@@ -34,13 +34,13 @@ ki4kmu:Image a owl:Class ;
     rdfs:label "Image"@en ;
     rdfs:comment "An image extracted from a document, or an image-typed section."@en .
 
-ki4kmu:Tag a owl:Class ;
-    rdfs:label "Tag"@en ;
-    rdfs:comment "A tag that can be assigned to sections for categorization."@en .
+ki4kmu:Concept a owl:Class ;
+    rdfs:label "Concept"@en ;
+    rdfs:comment "A concept that can be assigned to sections for categorization."@en .
 
 ki4kmu:Keyphrase a owl:Class ;
     rdfs:label "Keyphrase"@en ;
-    rdfs:comment "A lemmatized keyphrase extracted from text for tag matching."@en .
+    rdfs:comment "A lemmatized keyphrase extracted from text for concept matching."@en .
 
 # ---------------------------------------------------------------------------
 # Object Properties
@@ -56,10 +56,10 @@ ki4kmu:isContained a owl:ObjectProperty ;
     rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Text ki4kmu:Image) ] ;
     rdfs:range ki4kmu:Section .
 
-ki4kmu:hasTag a owl:ObjectProperty ;
-    rdfs:label "has tag"@en ;
+ki4kmu:hasConcept a owl:ObjectProperty ;
+    rdfs:label "has concept"@en ;
     rdfs:domain ki4kmu:Section ;
-    rdfs:range ki4kmu:Tag .
+    rdfs:range ki4kmu:Concept .
 
 ki4kmu:hasKeyphrase a owl:ObjectProperty ;
     rdfs:label "has keyphrase"@en ;
@@ -68,9 +68,9 @@ ki4kmu:hasKeyphrase a owl:ObjectProperty ;
 
 ki4kmu:coOccursWith a owl:ObjectProperty, owl:SymmetricProperty ;
     rdfs:label "co-occurs with"@en ;
-    rdfs:comment "Links two Tags that appear together on at least one Section. Built post-ingestion."@en ;
-    rdfs:domain ki4kmu:Tag ;
-    rdfs:range ki4kmu:Tag .
+    rdfs:comment "Links two Concepts that appear together on at least one Section. Built post-ingestion."@en ;
+    rdfs:domain ki4kmu:Concept ;
+    rdfs:range ki4kmu:Concept .
 
 # ---------------------------------------------------------------------------
 # Datatype Properties
@@ -116,7 +116,7 @@ ki4kmu:image_base64 a owl:DatatypeProperty ;
     rdfs:domain ki4kmu:Image ;
     rdfs:range xsd:string .
 
-ki4kmu:tag_label a owl:DatatypeProperty ;
-    rdfs:label "tag label"@en ;
-    rdfs:domain ki4kmu:Tag ;
+ki4kmu:concept_label a owl:DatatypeProperty ;
+    rdfs:label "concept label"@en ;
+    rdfs:domain ki4kmu:Concept ;
     rdfs:range xsd:string .

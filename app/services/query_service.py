@@ -8,9 +8,9 @@ from app.models.api_models import QueryResultItem
 from app.infrastructure.chroma_repository import semantic_search
 from app.infrastructure.graphdb_reader import (
     get_chunks_for_section,
-    search_chunks_by_tags,
+    search_chunks_by_concepts,
     search_chunks_by_keyphrases,
-    get_related_chunks_via_tags,
+    get_related_chunks_via_concepts,
     get_related_chunks_via_cooccurrence,
 )
 from app.infrastructure.ml.rerank_embedder import get_rerank_embedder
@@ -37,12 +37,12 @@ async def _graph_keyword_search_chunks(query: str) -> List[dict]:
         return []
 
     loop = asyncio.get_event_loop()
-    tag_chunks = await loop.run_in_executor(None, search_chunks_by_tags, keywords)
+    concept_chunks = await loop.run_in_executor(None, search_chunks_by_concepts, keywords)
     kp_chunks = await loop.run_in_executor(None, search_chunks_by_keyphrases, keywords)
 
     seen = set()
     all_chunks = []
-    for chunk in tag_chunks + kp_chunks:
+    for chunk in concept_chunks + kp_chunks:
         cid = chunk["chunk_id"]
         if cid in seen:
             continue
@@ -59,10 +59,10 @@ async def _graph_traversal_expand_chunks(
 ) -> List[dict]:
     """
     Graph traversal expansion: for each section returned by vector search,
-    find structurally related chunks via tag hops and tag co-occurrence.
+    find structurally related chunks via concept hops and concept co-occurrence.
 
-    - 2-hop: seed_section -> shared Tag <- other_section -> chunk
-    - 3-hop: seed_section -> Tag_A -[coOccursWith]-> Tag_B <- other_section -> chunk
+    - 2-hop: seed_section -> shared Concept <- other_section -> chunk
+    - 3-hop: seed_section -> Concept_A -[coOccursWith]-> Concept_B <- other_section -> chunk
     """
     loop = asyncio.get_event_loop()
     seen_sections: set[str] = set()
@@ -76,15 +76,15 @@ async def _graph_traversal_expand_chunks(
         seen_sections.add(section_id)
 
         try:
-            tag_chunks, cooc_chunks = await asyncio.gather(
-                loop.run_in_executor(None, get_related_chunks_via_tags, section_id),
+            concept_chunks, cooc_chunks = await asyncio.gather(
+                loop.run_in_executor(None, get_related_chunks_via_concepts, section_id),
                 loop.run_in_executor(None, get_related_chunks_via_cooccurrence, section_id),
             )
         except Exception as e:
             logger.warning("[QUERY] Graph traversal failed for section %s: %s", section_id, e)
             continue
 
-        for chunk in tag_chunks + cooc_chunks:
+        for chunk in concept_chunks + cooc_chunks:
             cid = chunk["chunk_id"]
             if cid in seen_chunks:
                 continue

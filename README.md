@@ -17,18 +17,18 @@ Neither vector search nor graph search is sufficient on its own:
 | ✅ Strengths | Semantic understanding, natural language queries | Keyword & keyphrase matching, structured traversal |
 | ❌ Weaknesses | Domain-specific terms, exact keyword lookup | Semantic ranking, cross-lingual queries |
 
-A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes tagged with `chassis` or `compression`. The two result sets are merged and reranked — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
+A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes with concepts `chassis` or `compression`. The two result sets are merged and reranked — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
 
 ### Visual Graph Examples
 
-![Tag Example](./images/tag_example.png)
+![Concept Example](./images/tag_example.png)
 ![Keyphrase Example](./images/keyphrase_example.png)
 
 ## Features
 
 - **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
-- **Graph Traversal**: Multi-hop tag traversal and tag co-occurrence expansion enrich retrieval beyond what vector search alone can reach
+- **Graph Traversal**: Multi-hop concept traversal and concept co-occurrence expansion enrich retrieval beyond what vector search alone can reach
 - **Large Candidate Pool**: Each retrieval arm independently fetches up to 64 candidates (50–100 range recommended by recent literature), then the full merged pool is reranked down to `top_k`
 - **Local-first Reranking**: Reranking via local [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) — no external API dependency at query time
 - **Multilingual**: Both the text embedder and reranker support multilingual input
@@ -58,43 +58,43 @@ The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent
 - `Document` — an ingested PDF
 - `Chunk` — a raw text chunk extracted from a document page
 - `Section` — a logical section identified by the SLM within a chunk (subclasses: `Text`, `Image`)
-- `Tag` — a retrieval label assigned to a section by the SLM (e.g. `"compression"`, `"GDPR"`)
+- `Concept` — a retrieval label assigned to a section by the SLM (e.g. `"compression"`, `"GDPR"`)
 - `Keyphrase` — a lemmatized keyword algorithmically extracted from section text
 
 **Key relationships:**
 - `Chunk` → `belongsTo` → `Document`
 - `Section` → `isContained` → `Chunk`
-- `Section` → `hasTag` → `Tag`
+- `Section` → `hasConcept` → `Concept`
 - `Text` → `hasKeyphrase` → `Keyphrase`
-- `Tag` ↔ `coOccursWith` ↔ `Tag` *(built post-ingestion, symmetric)*
+- `Concept` ↔ `coOccursWith` ↔ `Concept` *(built post-ingestion, symmetric)*
 
-This structure means a query can reach relevant text chunks either by traversing tags/keyphrases (graph path) or by finding the section in the vector DB and then fetching its parent chunk (vector path).
+This structure means a query can reach relevant text chunks either by traversing concepts/keyphrases (graph path) or by finding the section in the vector DB and then fetching its parent chunk (vector path).
 
 ## Graph Traversal
 
-Tag nodes are **global hubs**: every section across all documents that receives the same tag (e.g. `gdpr`) points to the same single Tag node in GraphDB. This enables two graph traversal strategies that run on top of vector search results:
+Concept nodes are **global hubs**: every section across all documents that receives the same concept (e.g. `gdpr`) points to the same single Concept node in GraphDB. This enables two graph traversal strategies that run on top of vector search results:
 
-### 2-hop: Cross-section tag traversal
+### 2-hop: Cross-section concept traversal
 
-Starting from a section found by vector search, the graph follows its tags to discover *all other sections in the knowledge base that share at least one tag*:
+Starting from a section found by vector search, the graph follows its concepts to discover *all other sections in the knowledge base that share at least one concept*:
 
 ```
-seed_section --hasTag--> Tag <--hasTag-- related_section --isContained--> chunk
+seed_section --hasConcept--> Concept <--hasConcept-- related_section --isContained--> chunk
 ```
 
-This retrieves chunks that may use completely different vocabulary but are structurally tagged with the same concept — something cosine similarity cannot find.
+This retrieves chunks that may use completely different vocabulary but are structurally labeled with the same concept — something cosine similarity cannot find.
 
-### 3-hop: Tag co-occurrence expansion
+### 3-hop: Concept co-occurrence expansion
 
-After each document is ingested, `build_tag_cooccurrence()` scans all sections and inserts a `ki4kmu:coOccursWith` edge between every pair of tags that appear together on the same section. This builds a tag-level co-occurrence graph automatically.
+After each document is ingested, `build_concept_cooccurrence()` scans all sections and inserts a `ki4kmu:coOccursWith` edge between every pair of concepts that appear together on the same section. This builds a concept-level co-occurrence graph automatically.
 
 At query time, the traversal extends one more hop:
 
 ```
-seed_section --hasTag--> Tag_A --coOccursWith--> Tag_B <--hasTag-- related_section --isContained--> chunk
+seed_section --hasConcept--> Concept_A --coOccursWith--> Concept_B <--hasConcept-- related_section --isContained--> chunk
 ```
 
-This retrieves chunks about *topics that tend to go with* the seed section's tags, even if they share no tag directly. For example, if `gdpr` and `datenschutzbeauftragter` co-occur frequently, a query seeding on `gdpr` will also surface chunks tagged only with `datenschutzbeauftragter`.
+This retrieves chunks about *topics that tend to go with* the seed section's concepts, even if they share no concept directly. For example, if `gdpr` and `datenschutzbeauftragter` co-occur frequently, a query seeding on `gdpr` will also surface chunks labeled only with `datenschutzbeauftragter`.
 
 ### Retrieval pipeline
 
@@ -103,8 +103,8 @@ Each arm independently fetches up to `_CANDIDATE_POOL_SIZE` (default: 64) candid
 | Stage | Source | What it finds |
 |---|---|---|
 | 1 | Chroma vector search | Embedding-similar sections (up to 64) |
-| 2 | Graph keyword search | Sections whose tags/keyphrases match query terms (up to 64) |
-| 3 | 2-hop tag traversal | Sections sharing tags with vector results (up to 64) |
+| 2 | Graph keyword search | Sections whose concepts/keyphrases match query terms (up to 64) |
+| 3 | 2-hop concept traversal | Sections sharing concepts with vector results (up to 64) |
 | 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results (up to 64) |
 | 5 | Qwen3-Reranker-0.6B | Final ranked top-k from merged pool |
 

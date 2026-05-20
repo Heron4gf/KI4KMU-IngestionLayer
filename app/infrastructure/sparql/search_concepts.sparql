@@ -1,13 +1,13 @@
 {{PREFIXES}}
 
 SELECT DISTINCT ?section ?chunk ?text ?index WHERE {
-    ?tag rdf:type ki4kmu:Tag ;
-         rdfs:label ?tagLabel .
-    FILTER(CONTAINS(LCASE(STR(?tagLabel)), LCASE({{keyword_sparql}})))
-    
-    ?section ki4kmu:hasTag ?tag ;
+    ?concept rdf:type ki4kmu:Concept ;
+         rdfs:label ?conceptLabel .
+    FILTER(CONTAINS(LCASE(STR(?conceptLabel)), LCASE({{keyword_sparql}})))
+
+    ?section ki4kmu:hasConcept ?concept ;
              rdf:type ki4kmu:Section .
-    
+
     ?section ki4kmu:isContained ?chunk .
     ?chunk rdf:type ki4kmu:Chunk ;
            ki4kmu:text ?text ;

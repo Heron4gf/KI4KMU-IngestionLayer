@@ -6,7 +6,7 @@ class Text(BaseModel):
     content: str
 
 
-class Tag(BaseModel):
+class Concept(BaseModel):
     label: str
 
 
@@ -15,7 +15,7 @@ class SectionExtraction(BaseModel):
     section_id: str
     label: str
     texts: List[Text]
-    tags: List[Tag]
+    concepts: List[Concept]
 
 
 class SectionExtractionWithUUID(BaseModel):
@@ -23,7 +23,7 @@ class SectionExtractionWithUUID(BaseModel):
     section_id: str
     label: str
     texts: List[Text]
-    tags: List[Tag]
+    concepts: List[Concept]
     uuid: str
 
 

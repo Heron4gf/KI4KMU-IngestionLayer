@@ -1,9 +1,9 @@
 {{PREFIXES}}
 
-SELECT DISTINCT ?relatedSection ?relatedChunk ?relatedText ?relatedIndex ?sharedTag WHERE {
-    {{seed_section_uri}} ki4kmu:hasTag ?sharedTag .
+SELECT DISTINCT ?relatedSection ?relatedChunk ?relatedText ?relatedIndex ?sharedConcept WHERE {
+    {{seed_section_uri}} ki4kmu:hasConcept ?sharedConcept .
 
-    ?relatedSection ki4kmu:hasTag ?sharedTag ;
+    ?relatedSection ki4kmu:hasConcept ?sharedConcept ;
                     rdf:type ki4kmu:Section .
     FILTER(?relatedSection != {{seed_section_uri}})
 
@@ -12,4 +12,4 @@ SELECT DISTINCT ?relatedSection ?relatedChunk ?relatedText ?relatedIndex ?shared
                   ki4kmu:text ?relatedText ;
                   ki4kmu:chunk_index ?relatedIndex .
 }
-ORDER BY ?sharedTag ?relatedIndex
+ORDER BY ?sharedConcept ?relatedIndex
