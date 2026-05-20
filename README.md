@@ -19,23 +19,19 @@ Neither vector search nor graph search is sufficient on its own:
 
 A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits from both: the vector search finds semantically similar sections, while graph traversal retrieves chunks linked to nodes with concepts `chassis` or `compression`. The two result sets are merged and reranked — so the final output is both semantically coherent and keyword-precise. Crucially, the reranker can be swapped at any time without re-ingesting documents.
 
-### Visual Graph Examples
-
-![Concept Example](./images/tag_example.png)
-![Keyphrase Example](./images/keyphrase_example.png)
-
 ## Features
 
 - **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
 - **Graph Traversal**: Multi-hop concept traversal and concept co-occurrence expansion enrich retrieval beyond what vector search alone can reach
 - **Large Candidate Pool**: Each retrieval arm independently fetches up to 50 candidates (tunable via `VECTOR_TOP_K`), then the full merged pool is reranked down to `top_k`
-- **Local-first Reranking**: Reranking via local [Qwen3-Reranker-0.6B](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B) — no external API dependency at query time
 - **Multilingual**: Both the text embedder and reranker support multilingual input
 - **Observability**: Full tracing and evaluation support via [Langfuse](https://langfuse.com/)
 - **Local-first**: Designed to run fully on-premise using open-weight models; external APIs can be swapped with local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
 - **RESTful API**: Clean, versioned REST API with async job conventions
 - **Docker**: Fully containerized via Docker Compose
+
+Edges visually connect traversal chunks back to their seed vector sections, telling the multi-hop retrieval story.
 
 ## Graph Retrieval Visualizer
 
@@ -51,7 +47,10 @@ After starting the services, enter a query and press **Run** to watch each stage
 4. **Graph traversal** — chunks discovered via 2-hop concept and 3-hop co-occurrence hops
 5. **Rerank** — final top-k results highlighted in the graph
 
-Edges visually connect traversal chunks back to their seed vector sections, telling the multi-hop retrieval story.
+#### Demo
+
+https://github.com/user-attachments/assets/25fc481c-ed59-4811-9182-c78dda041a5f
+
 
 ## Technologies
 
