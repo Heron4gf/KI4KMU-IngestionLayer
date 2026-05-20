@@ -9,7 +9,7 @@ from langfuse import observe
 from app.services.preprocessing_service import chunk_pdf_with_preprocessing
 from app.services.image_service import process_images_pipeline
 from app.infrastructure.chroma_repository import document_already_ingested, store_sections_in_chroma, delete_document_sections
-from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section, _uri, _canonical_id
+from app.infrastructure.graphdb_writer import insert_document, insert_chunk, insert_image, insert_or_merge_section, build_tag_cooccurrence, _uri, _canonical_id
 from app.infrastructure.job_store import JobStage, update_job
 from app.core.config import SECTION_EXTRACTOR_URL, PREFIXES
 from app.utils.files import file_md5
@@ -37,9 +37,8 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
     await asyncio.to_thread(insert_chunk, chunk_id, document_id, text, i, page_number)
 
     sections = await _extract_sections(client, chunk_id, text)
-    
+
     if sections:
-        # Store sections in Chroma (using section UUIDs as IDs)
         await asyncio.to_thread(
             store_sections_in_chroma,
             sections=sections,
@@ -47,8 +46,7 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
             document_id=document_id,
             pdf_hash=pdf_hash,
         )
-        
-        # Write sections to GraphDB
+
         for section in sections:
             await asyncio.to_thread(insert_or_merge_section, section, chunk_id)
 
@@ -65,7 +63,6 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
         if job_id:
             await update_job(job_id, stage=stage)
 
-    # Ensure the Document root node exists before any belongsTo edges are written
     await asyncio.to_thread(insert_document, document_id, pdf_hash)
 
     await _stage(JobStage.CHUNKING_TEXT)
@@ -76,8 +73,6 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
     captioned_images = await process_images_pipeline(pdf_path)
     logger.info("[SERVICE] Extracted %d captioned images", len(captioned_images))
 
-    # Write image nodes to GraphDB, each with its own dedicated section
-    # and the caption stored as a Text node within the section
     from app.infrastructure.graphdb_writer import _run_update
 
     for idx, image_element in enumerate(captioned_images):
@@ -88,24 +83,19 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
 
         if image_b64:
             image_id = f"{document_id}_image_{idx}"
-            # Create a dedicated section UUID for this image
             image_section_uuid = f"{document_id}_img_section_{idx}"
             image_section_uri = _uri(image_section_uuid)
             image_section_id = f"img_section_{idx}"
 
-            # Create section with caption as Text node
             image_section = {
                 "uuid": image_section_uuid,
                 "section_id": image_section_id,
                 "section_type": "Image",
-                "label": caption[:80],  # Truncate label for graph storage
-                "texts": [{"content": caption}],  # Store full caption as Text node
+                "label": caption[:80],
+                "texts": [{"content": caption}],
                 "tags": [],
             }
-            # Use an empty chunk_id since images don't belong to a text chunk
             await asyncio.to_thread(insert_or_merge_section, image_section, "")
-
-            # Insert the image node and link to its dedicated section
             await asyncio.to_thread(insert_image, image_id, document_id, image_b64, image_section_uri, page_number)
 
     await _stage(JobStage.EXTRACTING_SECTIONS)
@@ -115,11 +105,14 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
             tasks = [_process_single_chunk(client, i, element, document_id, pdf_hash) for i, element in enumerate(text_elements)]
             if tasks:
                 await asyncio.gather(*tasks)
-        
-        # Count total sections stored (approximate based on text elements)
-        total_sections_stored = len(text_elements)  # This is an approximation
+
+        total_sections_stored = len(text_elements)
         await _stage(JobStage.WRITING_GRAPHDB)
         logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
+
+        # Build tag co-occurrence edges now that all sections are written
+        await asyncio.to_thread(build_tag_cooccurrence)
+
     except Exception as e:
         logger.error("[SERVICE] GraphDB write failed, rolling back Chroma for document %s: %s", document_id, e)
         await asyncio.to_thread(delete_document_sections, document_id)

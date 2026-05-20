@@ -8,7 +8,7 @@
     a owl:Ontology ;
     rdfs:label "KI-4-KMU Ontology"@en ;
     rdfs:comment "Ontology for the KI-4-KMU document ingestion and knowledge graph pipeline."@en ;
-    owl:versionInfo "1.0.0" .
+    owl:versionInfo "1.1.0" .
 
 # ---------------------------------------------------------------------------
 # Classes
@@ -65,6 +65,12 @@ ki4kmu:hasKeyphrase a owl:ObjectProperty ;
     rdfs:label "has keyphrase"@en ;
     rdfs:domain ki4kmu:Text ;
     rdfs:range ki4kmu:Keyphrase .
+
+ki4kmu:coOccursWith a owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:label "co-occurs with"@en ;
+    rdfs:comment "Links two Tags that appear together on at least one Section. Built post-ingestion."@en ;
+    rdfs:domain ki4kmu:Tag ;
+    rdfs:range ki4kmu:Tag .
 
 # ---------------------------------------------------------------------------
 # Datatype Properties

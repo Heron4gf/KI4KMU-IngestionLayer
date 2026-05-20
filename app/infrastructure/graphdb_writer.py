@@ -42,7 +42,7 @@ def _canonical_id(raw):
 
 
 def _uri(local):
-    return f"<{BASE_NS}{quote(str(local), safe='')}>"
+    return f"<{BASE_NS}{quote(str(local), safe='')}>" 
 
 
 def _literal(value):
@@ -129,12 +129,11 @@ def insert_or_merge_section(section, chunk_id):
         return
 
     section_id = _canonical_id(section.get("section_id", ""))
-    section_uri = _uri(section_uuid)  # Use UUID as URI
+    section_uri = _uri(section_uuid)
     section_type = section.get("section_type", "Text")
     co_type = "ki4kmu:Image" if section_type == "Image" else "ki4kmu:Text"
     label = section.get("label", section_id)
 
-    # Only insert containment triple if chunk_id is provided (not empty for image sections)
     if chunk_id:
         chunk_uri = _uri(chunk_id)
         containment_query = load_and_parse(
@@ -156,7 +155,6 @@ def insert_or_merge_section(section, chunk_id):
     )
     _run_update(section_query)
 
-    # Insert Text instances + Keyphrases (batched)
     texts = section.get("texts", [])
     for idx, text_obj in enumerate(texts):
         text_content = text_obj.get("content", "")
@@ -173,7 +171,6 @@ def insert_or_merge_section(section, chunk_id):
             )
             _run_update(text_query)
 
-            # Batch insert all keyphrases for this text in a single SPARQL call
             keyphrases = extract_keyphrases(text_content)
             if keyphrases:
                 kp_triples = ""
@@ -183,11 +180,10 @@ def insert_or_merge_section(section, chunk_id):
                     kp_triples += f"    {text_uri} ki4kmu:hasKeyphrase {kp_uri} .\n"
                     kp_triples += f"    {kp_uri} rdf:type ki4kmu:Keyphrase .\n"
                     kp_triples += f"    {kp_uri} rdfs:label {_literal(kp)} .\n"
-                
+
                 batch_query = f"{PREFIXES}\nINSERT DATA {{\n{kp_triples}}}"
                 _run_update(batch_query)
 
-    # Batch insert all tags for this section in a single SPARQL call
     tags = section.get("tags", [])
     if tags:
         tag_triples = ""
@@ -199,7 +195,7 @@ def insert_or_merge_section(section, chunk_id):
                 tag_triples += f"    {tag_uri} rdf:type ki4kmu:Tag .\n"
                 tag_triples += f"    {tag_uri} rdfs:label {_literal(tag_label)} .\n"
                 tag_triples += f"    {section_uri} ki4kmu:hasTag {tag_uri} .\n"
-        
+
         if tag_triples:
             batch_query = f"{PREFIXES}\nINSERT DATA {{\n{tag_triples}}}"
             _run_update(batch_query)
@@ -230,6 +226,27 @@ def insert_tag(tag_label, section_uri):
         section_uri=section_uri,
     )
     _run_update(query)
+
+
+def build_tag_cooccurrence():
+    """
+    For every pair of tags that share a Section, insert a ki4kmu:coOccursWith edge.
+    Since ki4kmu:coOccursWith is owl:SymmetricProperty only one direction is needed.
+    Call this once at the end of each document ingestion job.
+    """
+    query = f"""{PREFIXES}
+INSERT {{
+    ?tagA ki4kmu:coOccursWith ?tagB .
+}}
+WHERE {{
+    ?section ki4kmu:hasTag ?tagA .
+    ?section ki4kmu:hasTag ?tagB .
+    FILTER(?tagA != ?tagB)
+    FILTER(STR(?tagA) < STR(?tagB))
+}}
+"""
+    _run_update(query)
+    logger.info("[GRAPHDB] Tag co-occurrence edges built")
 
 
 # ---------------------------------------------------------------------------

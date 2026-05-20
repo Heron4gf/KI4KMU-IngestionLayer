@@ -166,3 +166,62 @@ def search_chunks_by_keyphrases(keywords: List[str]) -> List[dict]:
                 "section_id": row["section"]["value"].replace(BASE_NS, ""),
             })
     return all_chunks
+
+
+def get_related_chunks_via_tags(section_id: str) -> List[dict]:
+    """
+    2-hop traversal: seed_section -> shared Tag <- other_section -> chunk.
+    Returns chunks from all sections that share at least one tag with the seed section.
+    """
+    section_uri = _uri(section_id)
+    query = load_and_parse(
+        "find_related_chunks_via_tag.sparql",
+        PREFIXES=PREFIXES,
+        seed_section_uri=section_uri,
+    )
+    bindings = _execute_and_parse(query)
+    seen = set()
+    results = []
+    for row in bindings:
+        chunk_id = row["relatedChunk"]["value"].replace(BASE_NS, "")
+        if chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        results.append({
+            "chunk_id": chunk_id,
+            "text": row["relatedText"]["value"],
+            "chunk_index": int(row["relatedIndex"]["value"]),
+            "section_id": row["relatedSection"]["value"].replace(BASE_NS, ""),
+            "via_tag": row["sharedTag"]["value"].replace(BASE_NS, ""),
+        })
+    return results
+
+
+def get_related_chunks_via_cooccurrence(section_id: str) -> List[dict]:
+    """
+    3-hop traversal: seed_section -> Tag_A -[coOccursWith]-> Tag_B <- other_section -> chunk.
+    Returns chunks from sections tagged with topics that co-occur with the seed section's tags.
+    Requires build_tag_cooccurrence() to have been run after ingestion.
+    """
+    section_uri = _uri(section_id)
+    query = load_and_parse(
+        "find_related_chunks_via_cooccurrence.sparql",
+        PREFIXES=PREFIXES,
+        seed_section_uri=section_uri,
+    )
+    bindings = _execute_and_parse(query)
+    seen = set()
+    results = []
+    for row in bindings:
+        chunk_id = row["relatedChunk"]["value"].replace(BASE_NS, "")
+        if chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        results.append({
+            "chunk_id": chunk_id,
+            "text": row["relatedText"]["value"],
+            "chunk_index": int(row["relatedIndex"]["value"]),
+            "section_id": row["relatedSection"]["value"].replace(BASE_NS, ""),
+            "via_tag": row["bridgeTag"]["value"].replace(BASE_NS, ""),
+        })
+    return results

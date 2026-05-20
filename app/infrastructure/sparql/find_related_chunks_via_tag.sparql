@@ -1,0 +1,15 @@
+{{PREFIXES}}
+
+SELECT DISTINCT ?relatedSection ?relatedChunk ?relatedText ?relatedIndex ?sharedTag WHERE {
+    {{seed_section_uri}} ki4kmu:hasTag ?sharedTag .
+
+    ?relatedSection ki4kmu:hasTag ?sharedTag ;
+                    rdf:type ki4kmu:Section .
+    FILTER(?relatedSection != {{seed_section_uri}})
+
+    ?relatedSection ki4kmu:isContained ?relatedChunk .
+    ?relatedChunk rdf:type ki4kmu:Chunk ;
+                  ki4kmu:text ?relatedText ;
+                  ki4kmu:chunk_index ?relatedIndex .
+}
+ORDER BY ?sharedTag ?relatedIndex

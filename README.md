@@ -28,6 +28,7 @@ A query like *"Give me the engine compression ratio of Chassis 3413GT"* benefits
 
 - **Async PDF Ingestion**: Upload PDFs and poll for results — no blocking on long-running processing
 - **Hybrid Search**: Vector semantic search + graph keyword traversal, merged and reranked
+- **Graph Traversal**: Multi-hop tag traversal and tag co-occurrence expansion enrich retrieval beyond what vector search alone can reach
 - **Multilingual Reranking**: `cohere/rerank-4-pro` via OpenRouter handles cross-lingual queries
 - **Observability**: Full tracing and evaluation support via [Langfuse](https://langfuse.com/)
 - **Local-first**: Designed to run fully on-premise using open-weight models; external APIs can be swapped with local inference via [LM Studio](https://lmstudio.ai/) for fully air-gapped deployments.
@@ -63,8 +64,47 @@ The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent
 - `Section` → `isContained` → `Chunk`
 - `Section` → `hasTag` → `Tag`
 - `Text` → `hasKeyphrase` → `Keyphrase`
+- `Tag` ↔ `coOccursWith` ↔ `Tag` *(built post-ingestion, symmetric)*
 
 This structure means a query can reach relevant text chunks either by traversing tags/keyphrases (graph path) or by finding the section in the vector DB and then fetching its parent chunk (vector path).
+
+## Graph Traversal
+
+Tag nodes are **global hubs**: every section across all documents that receives the same tag (e.g. `gdpr`) points to the same single Tag node in GraphDB. This enables two graph traversal strategies that run on top of vector search results:
+
+### 2-hop: Cross-section tag traversal
+
+Starting from a section found by vector search, the graph follows its tags to discover *all other sections in the knowledge base that share at least one tag*:
+
+```
+seed_section --hasTag--> Tag <--hasTag-- related_section --isContained--> chunk
+```
+
+This retrieves chunks that may use completely different vocabulary but are structurally tagged with the same concept — something cosine similarity cannot find.
+
+### 3-hop: Tag co-occurrence expansion
+
+After each document is ingested, `build_tag_cooccurrence()` scans all sections and inserts a `ki4kmu:coOccursWith` edge between every pair of tags that appear together on the same section. This builds a tag-level co-occurrence graph automatically.
+
+At query time, the traversal extends one more hop:
+
+```
+seed_section --hasTag--> Tag_A --coOccursWith--> Tag_B <--hasTag-- related_section --isContained--> chunk
+```
+
+This retrieves chunks about *topics that tend to go with* the seed section's tags, even if they share no tag directly. For example, if `gdpr` and `datenschutzbeauftragter` co-occur frequently, a query seeding on `gdpr` will also surface chunks tagged only with `datenschutzbeauftragter`.
+
+### Retrieval pipeline
+
+The three retrieval sources are merged and deduped before reranking:
+
+| Stage | Source | What it finds |
+|---|---|---|
+| 1 | Chroma vector search | Embedding-similar sections |
+| 2 | Graph keyword search | Sections whose tags/keyphrases match query terms |
+| 3 | 2-hop tag traversal | Sections sharing tags with vector results |
+| 4 | 3-hop co-occurrence traversal | Sections thematically adjacent to vector results |
+| 5 | `cohere/rerank-4-pro` | Final ranked top-k from merged pool |
 
 ## Installation
 

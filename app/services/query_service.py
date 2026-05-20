@@ -10,6 +10,8 @@ from app.infrastructure.graphdb_reader import (
     get_chunks_for_section,
     search_chunks_by_tags,
     search_chunks_by_keyphrases,
+    get_related_chunks_via_tags,
+    get_related_chunks_via_cooccurrence,
 )
 from app.infrastructure.ml.rerank_embedder import get_rerank_embedder
 from app.utils.text_normalization import extract_keyphrases
@@ -50,6 +52,49 @@ async def _graph_keyword_search_chunks(query: str, top_k: int) -> List[dict]:
     return all_chunks
 
 
+async def _graph_traversal_expand_chunks(
+    vector_results: List[QueryResultItem],
+    top_k: int,
+) -> List[dict]:
+    """
+    Graph traversal expansion: for each section returned by vector search,
+    find structurally related chunks via tag hops and tag co-occurrence.
+
+    - 2-hop: seed_section -> shared Tag <- other_section -> chunk
+    - 3-hop: seed_section -> Tag_A -[coOccursWith]-> Tag_B <- other_section -> chunk
+    """
+    loop = asyncio.get_event_loop()
+    seen_sections: set[str] = set()
+    seen_chunks: set[str] = set()
+    expanded: List[dict] = []
+
+    for result in vector_results:
+        section_id = result.metadata.get("section_uuid") or result.id
+        if not section_id or section_id in seen_sections:
+            continue
+        seen_sections.add(section_id)
+
+        try:
+            tag_chunks, cooc_chunks = await asyncio.gather(
+                loop.run_in_executor(None, get_related_chunks_via_tags, section_id),
+                loop.run_in_executor(None, get_related_chunks_via_cooccurrence, section_id),
+            )
+        except Exception as e:
+            logger.warning("[QUERY] Graph traversal failed for section %s: %s", section_id, e)
+            continue
+
+        for chunk in tag_chunks + cooc_chunks:
+            cid = chunk["chunk_id"]
+            if cid in seen_chunks:
+                continue
+            seen_chunks.add(cid)
+            expanded.append(chunk)
+            if len(expanded) >= top_k * _GRAPH_FETCH_MULTIPLIER:
+                return expanded
+
+    return expanded
+
+
 async def _resolve_vector_sections_to_chunks(
     vector_results: List[QueryResultItem],
 ) -> List[dict]:
@@ -83,10 +128,10 @@ async def _resolve_vector_sections_to_chunks(
     return all_chunks
 
 
-def _merge_chunks(vector_chunks: List[dict], graph_chunks: List[dict]) -> List[dict]:
+def _merge_chunks(*chunk_lists: List[dict]) -> List[dict]:
     seen = set()
     merged = []
-    for chunk in vector_chunks + graph_chunks:
+    for chunk in (c for lst in chunk_lists for c in lst):
         cid = chunk["chunk_id"]
         if cid in seen:
             continue
@@ -135,14 +180,20 @@ async def hybrid_search(
 
     vector_results, graph_chunks = await asyncio.gather(vector_task, graph_task)
     logger.info(
-        "[QUERY] Vector sections: %d, Graph chunks: %d",
+        "[QUERY] Vector sections: %d, Graph keyword chunks: %d",
         len(vector_results), len(graph_chunks),
     )
 
-    vector_chunks = await _resolve_vector_sections_to_chunks(vector_results)
-    logger.info("[QUERY] Vector resolved to %d chunks", len(vector_chunks))
+    vector_chunks, traversal_chunks = await asyncio.gather(
+        _resolve_vector_sections_to_chunks(vector_results),
+        _graph_traversal_expand_chunks(vector_results, max_graph_results),
+    )
+    logger.info(
+        "[QUERY] Vector resolved: %d chunks, Graph traversal expanded: %d chunks",
+        len(vector_chunks), len(traversal_chunks),
+    )
 
-    all_chunks = _merge_chunks(vector_chunks, graph_chunks)
+    all_chunks = _merge_chunks(vector_chunks, graph_chunks, traversal_chunks)
     logger.info("[QUERY] Merged unique chunks: %d", len(all_chunks))
 
     if not all_chunks:
@@ -150,8 +201,8 @@ async def hybrid_search(
 
     final_results = await _rerank_chunks(query, all_chunks, max_results_total)
     logger.info(
-        "[QUERY] Hybrid search complete: %d vector chunks, %d graph chunks, %d final",
-        len(vector_chunks), len(graph_chunks), len(final_results),
+        "[QUERY] Hybrid search complete: %d vector, %d graph keyword, %d traversal, %d final",
+        len(vector_chunks), len(graph_chunks), len(traversal_chunks), len(final_results),
     )
 
     return final_results
