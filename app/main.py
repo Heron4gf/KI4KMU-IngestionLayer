@@ -12,6 +12,7 @@ from .infrastructure.graphdb_writer import ensure_ontology_loaded
 from .infrastructure.ml.text_embedder import get_text_embedder
 from .infrastructure.ml.captioner import get_captioner
 from .infrastructure.ml.rerank_embedder import get_rerank_embedder
+from .services.enrichment.scheduler import idle_loop
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -34,7 +35,17 @@ async def lifespan(app: FastAPI):
         )
     logger.info("[STARTUP] ML models loaded (text embedder, captioner, reranker)")
 
+    enrichment_task = asyncio.create_task(idle_loop())
+    logger.info("[STARTUP] Enrichment idle-loop started")
+
     yield
+
+    enrichment_task.cancel()
+    try:
+        await enrichment_task
+    except asyncio.CancelledError:
+        pass
+    logger.info("[SHUTDOWN] Enrichment idle-loop stopped")
 
 
 app = FastAPI(title="KI-4-KMU Ingestion API", lifespan=lifespan)

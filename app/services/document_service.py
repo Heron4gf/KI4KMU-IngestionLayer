@@ -13,6 +13,7 @@ from app.infrastructure.graphdb_writer import insert_document, insert_chunk, ins
 from app.infrastructure.job_store import JobStage, update_job
 from app.core.config import SECTION_EXTRACTOR_URL, PREFIXES
 from app.utils.files import file_md5
+from app.services.enrichment.scheduler import enqueue_enrichment, on_ingestion_start, on_ingestion_end
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,14 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
 async def process_document(pdf_path: Path, document_id: str, job_id: Optional[str] = None) -> int:
     logger.info("[SERVICE] Starting document processing for: %s", pdf_path.name)
 
+    on_ingestion_start()
+    try:
+        return await _process_document_inner(pdf_path, document_id, job_id)
+    finally:
+        on_ingestion_end()
+
+
+async def _process_document_inner(pdf_path: Path, document_id: str, job_id: Optional[str] = None) -> int:
     pdf_hash = file_md5(pdf_path)
     if document_already_ingested(pdf_hash):
         raise ValueError("This document has already been ingested.")
@@ -117,5 +126,8 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
         logger.error("[SERVICE] GraphDB write failed, rolling back Chroma for document %s: %s", document_id, e)
         await asyncio.to_thread(delete_document_sections, document_id)
         raise
+
+    # Enqueue async enrichment job (runs after system is idle)
+    enqueue_enrichment(document_id)
 
     return total_sections_stored
