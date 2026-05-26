@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "entity_types": [
+    "machine",
+    "component",
+    "material",
+    "process",
+    "standard",
+    "organization",
+    "measurement",
+    "specification",
+    "product",
+    "technology"
+  ],
+  "predicate_map": {
+    "is part of": "hasComponent",
+    "consists of": "hasComponent",
+    "made of": "hasMaterial",
+    "manufactured by": "manufacturedBy",
+    "specifies": "hasSpecification",
+    "complies with": "compliesWith",
+    "used in": "usedIn",
+    "measures": "measures"
+  },
+  "merge_map": {}
+}

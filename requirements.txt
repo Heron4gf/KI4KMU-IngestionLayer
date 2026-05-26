@@ -22,6 +22,9 @@ simplemma
 nltk
 accelerate
 openrouter
+gliner
+openai
+numpy
 
 # Testing
 pytest
