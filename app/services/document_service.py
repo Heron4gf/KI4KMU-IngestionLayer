@@ -16,6 +16,8 @@ from app.utils.files import file_md5
 
 logger = logging.getLogger(__name__)
 
+_SECTION_EXTRACTOR_CONCURRENCY = 3
+
 
 async def _extract_sections(client: httpx.AsyncClient, chunk_id: str, text: str) -> list[dict]:
     """Call the section extractor service. Returns [] on failure — chunk ingestion must never fail."""
@@ -101,8 +103,14 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
     await _stage(JobStage.EXTRACTING_SECTIONS)
     total_sections_stored = 0
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            tasks = [_process_single_chunk(client, i, element, document_id, pdf_hash) for i, element in enumerate(text_elements)]
+        semaphore = asyncio.Semaphore(_SECTION_EXTRACTOR_CONCURRENCY)
+
+        async def _bounded_chunk(i: int, element: dict):
+            async with semaphore:
+                await _process_single_chunk(client, i, element, document_id, pdf_hash)
+
+        async with httpx.AsyncClient(timeout=240.0) as client:
+            tasks = [_bounded_chunk(i, element) for i, element in enumerate(text_elements)]
             if tasks:
                 await asyncio.gather(*tasks)
 
@@ -110,7 +118,6 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
         await _stage(JobStage.WRITING_GRAPHDB)
         logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
 
-        # Build concept co-occurrence edges now that all sections are written
         await asyncio.to_thread(build_concept_cooccurrence)
 
     except Exception as e:
