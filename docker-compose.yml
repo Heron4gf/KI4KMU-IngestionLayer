@@ -9,8 +9,8 @@ services:
       - .env
     environment:
       # Langfuse Tracing Configuration
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
       
       # Database and Infrastructure Hosts/Ports
@@ -24,16 +24,16 @@ services:
       - GRAPHDB_PASSWORD=${GRAPHDB_PASSWORD:-}
       
       # AI Captioning Config
-      - CAPTIONING_AI_BASE_URL=${CAPTIONING_AI_BASE_URL}
-      - CAPTIONING_AI_MODEL=${CAPTIONING_AI_MODEL}
-      - CAPTIONING_AI_API_KEY=${CAPTIONING_AI_API_KEY}
+      - CAPTIONING_AI_BASE_URL=${CAPTIONING_AI_BASE_URL:-}
+      - CAPTIONING_AI_MODEL=${CAPTIONING_AI_MODEL:-}
+      - CAPTIONING_AI_API_KEY=${CAPTIONING_AI_API_KEY:-}
       - CAPTION_MAX_TOKENS=${CAPTION_MAX_TOKENS:-256}
       - CAPTIONER_PROMPT_PATH=${CAPTIONER_PROMPT_PATH:-/prompts/captioner.md}
       
       - SECTION_EXTRACTOR_URL=http://section-extractor:8003
 
-      - HF_TOKEN=${HF_TOKEN}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - HF_HOME=/ki4kmu_data/.hf_cache
       - EMBEDDING_MODEL_PATH=${EMBEDDING_MODEL_PATH:-/ki4kmu_data/embedding-model}
     volumes:
@@ -87,12 +87,12 @@ services:
     env_file:
       - .env
     environment:
-      - EXTRACTOR_BASE_URL=${EXTRACTOR_BASE_URL}
-      - EXTRACTOR_API_KEY=${EXTRACTOR_API_KEY}
-      - EXTRACTOR_MODEL_ID=${EXTRACTOR_MODEL_ID}
+      - EXTRACTOR_BASE_URL=${EXTRACTOR_BASE_URL:-}
+      - EXTRACTOR_API_KEY=${EXTRACTOR_API_KEY:-}
+      - EXTRACTOR_MODEL_ID=${EXTRACTOR_MODEL_ID:-}
       - EXTRACTOR_PROMPT_PATH=${EXTRACTOR_PROMPT_PATH:-/prompts/extract.md}
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
     volumes:
       - ./prompts:/prompts:ro

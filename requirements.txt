@@ -6,9 +6,9 @@ requests
 chromadb
 pydantic
 torch
-transformers
+transformers==5.7.0
+sentence-transformers==5.4.1
 pillow
-sentence-transformers
 langchain-openai
 SPARQLWrapper
 pyyaml
