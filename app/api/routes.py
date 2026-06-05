@@ -2,15 +2,16 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator, Dict, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from langfuse import observe
+from pydantic import BaseModel
 
 from app.models.api_models import QueryRequest, QueryResponse
 from app.models.job_models import JobAccepted, JobStatusResponse
-from app.services.document_service import process_document
+from app.services.document_service import process_document, process_text_passages
 from app.services.query_service import (
     hybrid_search,
     _vector_search_sections,
@@ -24,6 +25,11 @@ from app.infrastructure.job_store import JobStatus, JobStage, create_job, get_jo
 
 logger = logging.getLogger(__name__)
 v1_router = APIRouter(prefix="/v1")
+
+
+class PassageIngestRequest(BaseModel):
+    passages: list[dict]
+    document_id: Optional[str] = None
 
 
 @observe(name="run_ingestion", as_type="chain", capture_input=True, capture_output=True)
@@ -42,23 +48,33 @@ async def _run_ingestion(job_id: str, file_bytes: bytes, filename: str) -> None:
         else:
             await update_job(job_id, status=JobStatus.COMPLETED, stage=JobStage.COMPLETED, document_id=document_id, num_chunks=num_chunks)
     except Exception as e:
-        logger.exception(f"[INGESTION] Job {job_id} failed: {e}")
+        logger.exception("[INGESTION] Job %s failed: %s", job_id, e)
         await update_job(job_id, status=JobStatus.FAILED, error=str(e))
     finally:
         tmp.unlink(missing_ok=True)
 
 
-async def _stream_retrieval(query: str, top_k: int) -> AsyncGenerator[str, None]:
+async def _run_text_ingestion(job_id: str, document_id: str, passages: list[dict]) -> None:
+    try:
+        await update_job(job_id, status=JobStatus.PROCESSING)
+        num_chunks = await process_text_passages(passages, document_id, job_id=job_id)
+        if num_chunks == 0:
+            await update_job(job_id, status=JobStatus.FAILED, stage=JobStage.FAILED, error="No chunks were stored for this document.")
+        else:
+            await update_job(job_id, status=JobStatus.COMPLETED, stage=JobStage.COMPLETED, document_id=document_id, num_chunks=num_chunks)
+    except Exception as e:
+        logger.exception("[INGESTION] Text job %s failed: %s", job_id, e)
+        await update_job(job_id, status=JobStatus.FAILED, error=str(e))
+
+
+async def _stream_retrieval(query: str, top_k: int, use_graph: bool = True) -> AsyncGenerator[str, None]:
     """Yield SSE events, one per retrieval stage."""
 
     def sse(name: str, data: dict) -> str:
         return f"event: {name}\ndata: {json.dumps(data)}\n\n"
 
-    # Stage 1 — vector search + graph keyword in parallel
-    vector_results, graph_chunks = await asyncio.gather(
-        _vector_search_sections(query),
-        _graph_keyword_search_chunks(query),
-    )
+    vector_results = await _vector_search_sections(query)
+    graph_chunks = await _graph_keyword_search_chunks(query) if use_graph else []
 
     yield sse("vector_results", {
         "nodes": [
@@ -74,7 +90,6 @@ async def _stream_retrieval(query: str, top_k: int) -> AsyncGenerator[str, None]
         ],
     })
 
-    # Stage 2 — resolve vector sections to their chunks
     vector_chunks = await _resolve_vector_sections_to_chunks(vector_results)
     yield sse("vector_chunks", {
         "nodes": [{"id": c["chunk_id"], "label": c["chunk_id"][:12], "type": "v_chunk"} for c in vector_chunks],
@@ -84,8 +99,7 @@ async def _stream_retrieval(query: str, top_k: int) -> AsyncGenerator[str, None]
         ],
     })
 
-    # Stage 3 — graph traversal expansion
-    traversal_chunks = await _graph_traversal_expand_chunks(vector_results)
+    traversal_chunks = await _graph_traversal_expand_chunks(vector_results) if use_graph else []
     yield sse("traversal", {
         "nodes": [{"id": c["chunk_id"], "label": c["chunk_id"][:12], "type": "t_chunk"} for c in traversal_chunks],
         "edges": [
@@ -94,7 +108,6 @@ async def _stream_retrieval(query: str, top_k: int) -> AsyncGenerator[str, None]
         ],
     })
 
-    # Stage 4 — rerank and emit final top-k
     all_chunks = _merge_chunks(vector_chunks, graph_chunks, traversal_chunks)
     final_results = await _rerank_chunks(query, all_chunks, top_k)
     top_ids = {r.id for r in final_results}
@@ -136,6 +149,23 @@ async def ingest_document(background_tasks: BackgroundTasks, file: UploadFile = 
     )
 
 
+@v1_router.post("/documents/text", response_model=JobAccepted, status_code=status.HTTP_202_ACCEPTED)
+async def ingest_text_passages(body: PassageIngestRequest, background_tasks: BackgroundTasks) -> JSONResponse:
+    job_id = str(uuid.uuid4())
+    document_id = body.document_id or str(uuid.uuid4())
+    await create_job(job_id, f"text:{document_id}")
+    background_tasks.add_task(_run_text_ingestion, job_id, document_id, body.passages)
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=JobAccepted(
+            job_id=job_id,
+            status=JobStatus.PENDING,
+            status_url=f"/v1/jobs/{job_id}",
+        ).model_dump(),
+        headers={"Location": f"/v1/jobs/{job_id}"},
+    )
+
+
 @v1_router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 async def get_job_status(job_id: str) -> JobStatusResponse:
     job = await get_job(job_id)
@@ -158,16 +188,21 @@ async def query_documents(body: QueryRequest) -> QueryResponse:
         body.max_vector_results,
         body.max_graph_results,
         body.max_results_total,
+        body.use_graph,
     )
     return QueryResponse(query=query, results=results)
 
 
 @v1_router.get("/query/stream")
-async def stream_query(query: str, top_k: int = 5) -> StreamingResponse:
+async def stream_query(
+    query: str,
+    top_k: int = 5,
+    use_graph: bool = Query(default=True),
+) -> StreamingResponse:
     if not query.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query must not be empty.")
     return StreamingResponse(
-        _stream_retrieval(query.strip(), top_k),
+        _stream_retrieval(query.strip(), top_k, use_graph),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

@@ -18,10 +18,7 @@ from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
 
-# How many top sections to fetch from the vector (embedding) search.
 VECTOR_TOP_K = 50
-
-# How many traversal chunks to collect per seed section before stopping.
 TRAVERSAL_LIMIT = 200
 
 
@@ -66,7 +63,7 @@ async def _graph_traversal_expand_chunks(
     - 3-hop: seed_section -> Concept_A -[coOccursWith]-> Concept_B <- other_section -> chunk
 
     Each returned chunk carries a ``seed_section_id`` field so the caller can
-    emit (seed → neighbor) edges for the visualisation.
+    emit (seed -> neighbor) edges for the visualisation.
     """
     loop = asyncio.get_event_loop()
     seen_sections: set[str] = set()
@@ -184,20 +181,23 @@ async def hybrid_search(
     max_vector_results: int = 3,
     max_graph_results: int = 2,
     max_results_total: int = 5,
+    use_graph: bool = True,
 ) -> List[QueryResultItem]:
-    vector_task = _vector_search_sections(query)
-    graph_task = _graph_keyword_search_chunks(query)
+    vector_results = await _vector_search_sections(query)
 
-    vector_results, graph_chunks = await asyncio.gather(vector_task, graph_task)
+    graph_chunks = await _graph_keyword_search_chunks(query) if use_graph else []
+
     logger.info(
         "[QUERY] Vector sections: %d, Graph keyword chunks: %d",
         len(vector_results), len(graph_chunks),
     )
 
-    vector_chunks, traversal_chunks = await asyncio.gather(
-        _resolve_vector_sections_to_chunks(vector_results),
-        _graph_traversal_expand_chunks(vector_results),
-    )
+    vector_chunks = await _resolve_vector_sections_to_chunks(vector_results)
+
+    traversal_chunks = []
+    if use_graph:
+        traversal_chunks = await _graph_traversal_expand_chunks(vector_results)
+
     logger.info(
         "[QUERY] Vector resolved: %d chunks, Graph traversal expanded: %d chunks",
         len(vector_chunks), len(traversal_chunks),
@@ -211,7 +211,8 @@ async def hybrid_search(
 
     final_results = await _rerank_chunks(query, all_chunks, max_results_total)
     logger.info(
-        "[QUERY] Hybrid search complete: %d vector, %d graph keyword, %d traversal, %d final",
+        "[QUERY] %s search complete: %d vector, %d graph keyword, %d traversal, %d final",
+        "Hybrid" if use_graph else "Vector-only",
         len(vector_chunks), len(graph_chunks), len(traversal_chunks), len(final_results),
     )
 

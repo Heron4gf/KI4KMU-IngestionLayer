@@ -8,6 +8,7 @@ class QueryRequest(BaseModel):
     max_vector_results: int = 3
     max_graph_results: int = 2
     max_results_total: int = 5
+    use_graph: bool = True
 
     @model_validator(mode="after")
     def apply_top_k(self) -> "QueryRequest":

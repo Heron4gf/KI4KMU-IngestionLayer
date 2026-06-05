@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 from typing import Optional
@@ -126,3 +127,51 @@ async def process_document(pdf_path: Path, document_id: str, job_id: Optional[st
         raise
 
     return total_sections_stored
+
+
+async def process_text_passages(
+    passages: list[dict],
+    document_id: str,
+    job_id: Optional[str] = None,
+) -> int:
+    logger.info("[SERVICE] Starting text passage ingestion for document: %s (%d passages)", document_id, len(passages))
+
+    text_hash = hashlib.md5(
+        "".join(p.get("text", "") for p in passages).encode()
+    ).hexdigest()
+
+    async def _stage(stage: JobStage):
+        if job_id:
+            await update_job(job_id, stage=stage)
+
+    await asyncio.to_thread(insert_document, document_id, text_hash)
+
+    text_elements = [
+        {"text": p.get("text", ""), "metadata": {"title": p.get("title", ""), "page_number": None}}
+        for p in passages
+        if p.get("text", "").strip()
+    ]
+
+    await _stage(JobStage.EXTRACTING_SECTIONS)
+    try:
+        semaphore = asyncio.Semaphore(_SECTION_EXTRACTOR_CONCURRENCY)
+
+        async def _bounded_chunk(i: int, element: dict):
+            async with semaphore:
+                await _process_single_chunk(client, i, element, document_id, text_hash)
+
+        async with httpx.AsyncClient(timeout=240.0) as client:
+            tasks = [_bounded_chunk(i, element) for i, element in enumerate(text_elements)]
+            if tasks:
+                await asyncio.gather(*tasks)
+
+        await _stage(JobStage.WRITING_GRAPHDB)
+        logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
+        await asyncio.to_thread(build_concept_cooccurrence)
+
+    except Exception as e:
+        logger.error("[SERVICE] Text ingestion failed, rolling back Chroma for document %s: %s", document_id, e)
+        await asyncio.to_thread(delete_document_sections, document_id)
+        raise
+
+    return len(text_elements)
