@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import uuid as uuid_lib
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +32,20 @@ async def _extract_sections(client: httpx.AsyncClient, chunk_id: str, text: str)
         return []
 
 
+def _make_synthetic_section(chunk_id: str, text: str, title: str = "") -> dict:
+    """Build a minimal section dict that satisfies Chroma and GraphDB writers,
+    without calling the section extractor service."""
+    section_uuid = str(uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, chunk_id))
+    return {
+        "uuid": section_uuid,
+        "section_id": chunk_id,
+        "section_type": "Text",
+        "label": (title or text[:80]).strip(),
+        "texts": [{"content": text}],
+        "concepts": [],
+    }
+
+
 async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict, document_id: str, pdf_hash: str):
     """Process a single chunk: extract sections, store in Chroma, and write to GraphDB."""
     chunk_id = f"{document_id}_chunk_{i}"
@@ -54,6 +69,27 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
 
         for section in sections:
             await asyncio.to_thread(insert_or_merge_section, section, chunk_id)
+
+
+async def _process_text_chunk(i: int, element: dict, document_id: str, text_hash: str):
+    """Process a single text passage: skip section extractor, synthesise one section directly."""
+    chunk_id = f"{document_id}_chunk_{i}"
+    text = element.get("text", "")
+    title = element.get("metadata", {}).get("title", "")
+
+    await asyncio.to_thread(insert_chunk, chunk_id, document_id, text, i, None)
+
+    section = _make_synthetic_section(chunk_id, text, title)
+    stored = await asyncio.to_thread(
+        store_sections_in_chroma,
+        sections=[section],
+        chunk_id=chunk_id,
+        document_id=document_id,
+        pdf_hash=text_hash,
+    )
+    logger.info("[DEBUG] text chunk %s stored %d items in Chroma", chunk_id, stored)
+
+    await asyncio.to_thread(insert_or_merge_section, section, chunk_id)
 
 
 @observe(name="document_processing", as_type="chain", capture_input=True, capture_output=True)
@@ -160,12 +196,11 @@ async def process_text_passages(
 
         async def _bounded_chunk(i: int, element: dict):
             async with semaphore:
-                await _process_single_chunk(client, i, element, document_id, text_hash)
+                await _process_text_chunk(i, element, document_id, text_hash)
 
-        async with httpx.AsyncClient(timeout=240.0) as client:
-            tasks = [_bounded_chunk(i, element) for i, element in enumerate(text_elements)]
-            if tasks:
-                await asyncio.gather(*tasks)
+        tasks = [_bounded_chunk(i, element) for i, element in enumerate(text_elements)]
+        if tasks:
+            await asyncio.gather(*tasks)
 
         await _stage(JobStage.WRITING_GRAPHDB)
         logger.info("[SERVICE] GraphDB write complete for document %s", document_id)
