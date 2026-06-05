@@ -40,15 +40,17 @@ async def _process_single_chunk(client: httpx.AsyncClient, i: int, element: dict
     await asyncio.to_thread(insert_chunk, chunk_id, document_id, text, i, page_number)
 
     sections = await _extract_sections(client, chunk_id, text)
+    logger.info("[DEBUG] chunk %s got %d sections: %s", chunk_id, len(sections), sections)
 
     if sections:
-        await asyncio.to_thread(
+        stored = await asyncio.to_thread(
             store_sections_in_chroma,
             sections=sections,
             chunk_id=chunk_id,
             document_id=document_id,
             pdf_hash=pdf_hash,
         )
+        logger.info("[DEBUG] chunk %s stored %d items in Chroma", chunk_id, stored)
 
         for section in sections:
             await asyncio.to_thread(insert_or_merge_section, section, chunk_id)
