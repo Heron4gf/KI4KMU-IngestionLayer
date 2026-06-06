@@ -28,3 +28,5 @@ STATE_DIR = os.environ.get("EVAL_STATE_DIR", "/app/state")
 CHECKPOINT_INGEST = f"{STATE_DIR}/phase1_ingest.jsonl"
 CHECKPOINT_RETRIEVE = f"{STATE_DIR}/phase2_retrieve.jsonl"
 CHECKPOINT_GENERATE = f"{STATE_DIR}/phase3_generate.jsonl"
+CHECKPOINT_SCORE_HYBRID = f"{STATE_DIR}/phase4_score_hybrid.jsonl"
+CHECKPOINT_SCORE_VECTOR = f"{STATE_DIR}/phase4_score_vector.jsonl"
