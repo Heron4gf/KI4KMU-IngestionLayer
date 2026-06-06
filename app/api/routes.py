@@ -14,6 +14,7 @@ from app.models.job_models import JobAccepted, JobStatusResponse
 from app.services.document_service import process_document, process_text_passages
 from app.services.query_service import (
     hybrid_search,
+    vector_only_search,
     _vector_search_sections,
     _graph_keyword_search_chunks,
     _resolve_vector_sections_to_chunks,
@@ -190,6 +191,20 @@ async def query_documents(body: QueryRequest) -> QueryResponse:
         body.max_results_total,
         body.use_graph,
     )
+    return QueryResponse(query=query, results=results)
+
+
+@v1_router.post("/query/vector", response_model=QueryResponse, status_code=status.HTTP_200_OK)
+@observe(name="query_documents_vector", as_type="span", capture_input=True, capture_output=True)
+async def query_documents_vector(body: QueryRequest) -> QueryResponse:
+    """Vector-only baseline endpoint — no graph keyword search, no traversal."""
+    query = body.query.strip()
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query must not be empty.",
+        )
+    results = await vector_only_search(query, body.max_results_total)
     return QueryResponse(query=query, results=results)
 
 

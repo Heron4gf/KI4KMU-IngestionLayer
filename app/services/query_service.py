@@ -18,7 +18,10 @@ from app.utils.text_normalization import extract_keyphrases
 
 logger = logging.getLogger(__name__)
 
+# How many top sections to fetch from the vector (embedding) search.
 VECTOR_TOP_K = 50
+
+# How many traversal chunks to collect per seed section before stopping.
 TRAVERSAL_LIMIT = 200
 
 
@@ -183,21 +186,19 @@ async def hybrid_search(
     max_results_total: int = 5,
     use_graph: bool = True,
 ) -> List[QueryResultItem]:
-    vector_results = await _vector_search_sections(query)
+    vector_task = _vector_search_sections(query)
+    graph_task = _graph_keyword_search_chunks(query) if use_graph else asyncio.coroutine(lambda: [])()
 
-    graph_chunks = await _graph_keyword_search_chunks(query) if use_graph else []
-
+    vector_results, graph_chunks = await asyncio.gather(vector_task, graph_task)
     logger.info(
         "[QUERY] Vector sections: %d, Graph keyword chunks: %d",
         len(vector_results), len(graph_chunks),
     )
 
-    vector_chunks = await _resolve_vector_sections_to_chunks(vector_results)
-
-    traversal_chunks = []
-    if use_graph:
-        traversal_chunks = await _graph_traversal_expand_chunks(vector_results)
-
+    vector_chunks, traversal_chunks = await asyncio.gather(
+        _resolve_vector_sections_to_chunks(vector_results),
+        _graph_traversal_expand_chunks(vector_results) if use_graph else asyncio.coroutine(lambda: [])()
+    )
     logger.info(
         "[QUERY] Vector resolved: %d chunks, Graph traversal expanded: %d chunks",
         len(vector_chunks), len(traversal_chunks),
@@ -211,9 +212,27 @@ async def hybrid_search(
 
     final_results = await _rerank_chunks(query, all_chunks, max_results_total)
     logger.info(
-        "[QUERY] %s search complete: %d vector, %d graph keyword, %d traversal, %d final",
-        "Hybrid" if use_graph else "Vector-only",
+        "[QUERY] Hybrid search complete: %d vector, %d graph keyword, %d traversal, %d final",
         len(vector_chunks), len(graph_chunks), len(traversal_chunks), len(final_results),
     )
 
     return final_results
+
+
+@observe(name="vector_only_search", as_type="retriever", capture_input=True, capture_output=True)
+async def vector_only_search(
+    query: str,
+    max_results_total: int = 5,
+) -> List[QueryResultItem]:
+    """Vector-only baseline: embedding search + section->chunk resolution + rerank.
+    No graph keyword search, no traversal expansion."""
+    vector_results = await _vector_search_sections(query)
+    logger.info("[QUERY][VECTOR] Vector sections: %d", len(vector_results))
+
+    vector_chunks = await _resolve_vector_sections_to_chunks(vector_results)
+    logger.info("[QUERY][VECTOR] Resolved chunks: %d", len(vector_chunks))
+
+    if not vector_chunks:
+        return []
+
+    return await _rerank_chunks(query, vector_chunks, max_results_total)
