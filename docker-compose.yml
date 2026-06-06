@@ -101,21 +101,21 @@ services:
     networks:
       - backend
 
-  gui:
-    build: ./gui
-    container_name: pdf-ingestion-gui
-    restart: unless-stopped
-    ports:
-      - "${GUI_PORT:-8501}:8501"
-    env_file:
-      - .env
-    environment:
-      - API_BASE_URL=http://api:8001/v1
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - backend
+#  gui: # not required for evaluation
+#    build: ./gui
+#    container_name: pdf-ingestion-gui
+#    restart: unless-stopped
+#    ports:
+#      - "${GUI_PORT:-8501}:8501"
+#    env_file:
+#      - .env
+#    environment:
+#      - API_BASE_URL=http://api:8001/v1
+#    depends_on:
+#      api:
+#        condition: service_healthy
+#    networks:
+#      - backend
 
 networks:
   backend:
