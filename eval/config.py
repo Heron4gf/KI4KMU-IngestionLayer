@@ -4,9 +4,9 @@ import os
 INGESTION_API_URL = os.environ["INGESTION_API_URL"]  # e.g. http://api:8001
 
 # --- LLM judge (Gemma 4 E2B, OpenAI-compatible endpoint) ---
-GEMMA_BASE_URL = os.environ["GEMMA_BASE_URL"]
+GEMMA_BASE_URL = os.environ.get("GEMMA_BASE_URL", "http://86.119.83.67:8003/v1")
 GEMMA_API_KEY = os.environ.get("GEMMA_API_KEY", "no-key")
-GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-4-e2b")
+GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-4-e2b-it")
 
 # --- Confident AI ---
 CONFIDENT_AI_KEY = os.environ["CONFIDENT_AI_KEY"]

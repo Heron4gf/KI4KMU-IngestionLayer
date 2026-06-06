@@ -11,7 +11,7 @@ import logging
 
 import deepeval
 from deepeval import evaluate
-from deepeval.models import OpenAIModel
+from deepeval.models import GPTModel
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import (
     AnswerRelevancyMetric,
@@ -19,6 +19,9 @@ from deepeval.metrics import (
     ContextualRecallMetric,
     ContextualPrecisionMetric,
 )
+
+from deepeval.evaluate import AsyncConfig, CacheConfig
+
 
 from checkpoint import load_records
 from config import (
@@ -57,9 +60,18 @@ def run() -> None:
         raise RuntimeError("[PHASE4] No generation records found — run phase 3 first.")
 
     logger.info("[PHASE4] Logging into Confident AI...")
-    deepeval.login_with_confident_ai(api_key=CONFIDENT_AI_KEY)
+    import os
+    CONFIDENT_AI_KEY = os.environ.get("CONFIDENT_AI_KEY", "the fucking key isn't set")
+    logger.info("[PHASE4] Confident AI key (first 10 chars): '%s'", CONFIDENT_AI_KEY[:10] if CONFIDENT_AI_KEY else "EMPTY")
+    import requests as _requests
+    _resp = _requests.get(
+        "https://api.confident-ai.com/v1/projects",
+        headers={"Authorization": f"Bearer {CONFIDENT_AI_KEY}"},
+        timeout=10,
+    )
+    logger.info("[PHASE4] Confident AI auth check: %d — %s", _resp.status_code, _resp.text[:200])
 
-    judge = OpenAIModel(
+    judge = GPTModel(
         model=GEMMA_MODEL,
         base_url=GEMMA_BASE_URL,
         api_key=GEMMA_API_KEY,
@@ -86,9 +98,9 @@ def run() -> None:
         evaluate(
             test_cases=test_cases,
             metrics=metrics,
-            run_async=False,
-            use_cache=True,
             identifier=f"ki4kmu-{pipeline}",
+            async_config=AsyncConfig(max_concurrent=1, throttle_value=5),
+            cache_config=CacheConfig(use_cache=True),
         )
 
         logger.info("[PHASE4] Pipeline '%s' evaluation pushed to Confident AI", pipeline)

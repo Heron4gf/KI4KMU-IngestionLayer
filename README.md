@@ -121,3 +121,21 @@ pytest
 # All tests including smoke tests (requires running Docker services)
 pytest --run-smoke
 ```
+
+## Evaluation
+
+Run the evaluation
+
+```bash
+docker compose --profile eval up --build
+```
+
+Resume after a crash
+
+```bash
+# Skip ingestion + retrieval, jump straight to generation
+EVAL_START_PHASE=3 docker compose --profile eval up eval
+
+# Skip to scoring only (phases 1-3 already checkpointed)
+EVAL_START_PHASE=4 docker compose --profile eval up eval
+```

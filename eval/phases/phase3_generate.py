@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 _RAG_PROMPT = """You are a helpful assistant. Answer the question using ONLY the context below.
 If the context does not contain enough information, say "I don't know".
 
+Answer very briefly, if possible the answer should be straightforward, very few words, if you are doubtful about different alternative answers you can output multiple of them.
+
 Context:
 {context}
 
@@ -49,6 +51,12 @@ def _generate(client: OpenAI, question: str, contexts: list[str]) -> str:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=512,
+            extra_body={
+        "thinking": {
+            "type": "enabled",
+            "budget_tokens": 256   # reasoning gets at most 256, answer gets the rest
+        }
+    }
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:

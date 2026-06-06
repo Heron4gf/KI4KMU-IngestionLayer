@@ -101,21 +101,21 @@ services:
     networks:
       - backend
 
-  gui:
-    build: ./gui
-    container_name: pdf-ingestion-gui
-    restart: unless-stopped
-    ports:
-      - "${GUI_PORT:-8501}:8501"
-    env_file:
-      - .env
-    environment:
-      - API_BASE_URL=http://api:8001/v1
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - backend
+#  gui: # not required for evaluation
+#    build: ./gui
+#    container_name: pdf-ingestion-gui
+#    restart: unless-stopped
+#    ports:
+#      - "${GUI_PORT:-8501}:8501"
+#    env_file:
+#      - .env
+#    environment:
+#      - API_BASE_URL=http://api:8001/v1
+#    depends_on:
+#      api:
+#        condition: service_healthy
+#    networks:
+#      - backend
 
   eval:
     build: ./eval
@@ -129,7 +129,7 @@ services:
       - GEMMA_BASE_URL=${GEMMA_BASE_URL:-}
       - GEMMA_API_KEY=${GEMMA_API_KEY:-}
       - GEMMA_MODEL=${GEMMA_MODEL:-gemma-4-e2b}
-      - CONFIDENT_AI_KEY=${CONFIDENT_AI_KEY:-}
+      - CONFIDENT_AI_KEY=${CONFIDENT_AI_KEY}
       - EVAL_DATASET_SPLIT=${EVAL_DATASET_SPLIT:-train}
       - EVAL_LIMIT=${EVAL_LIMIT:-200}
       - EVAL_INGEST_BATCH_SIZE=${EVAL_INGEST_BATCH_SIZE:-50}
