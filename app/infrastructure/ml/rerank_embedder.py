@@ -44,7 +44,8 @@ class LocalRerankEmbedder:
 
         self._model = CrossEncoder(
             RERANKER_MODEL_PATH,
-            model_kwargs={"dtype": dtype},
+            model_kwargs={"torch_dtype": dtype},
+            tokenizer_args={"use_fast": False},
             device=device,
         )
         logger.info("Local CrossEncoder reranker ready on %s", device)
