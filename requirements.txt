@@ -7,7 +7,7 @@ chromadb
 pydantic
 torch
 transformers==5.7.0
-sentence-transformers==3.3.1
+sentence-transformers
 pillow
 langchain-openai
 SPARQLWrapper
