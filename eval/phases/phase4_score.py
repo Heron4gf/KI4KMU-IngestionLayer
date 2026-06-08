@@ -9,18 +9,13 @@ The judge LLM is the same Gemma 4 E2B instance used for generation,
 provided via RobustJudgeModel — a GPTModel subclass that repairs malformed
 JSON before deepeval's own parser sees it.
 """
-import json
 import logging
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-import re
-
-from pydantic import ValidationError
 
 from deepeval import evaluate
-from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import (
     AnswerRelevancyMetric,
@@ -32,7 +27,6 @@ from deepeval.evaluate import AsyncConfig, CacheConfig
 
 from checkpoint import load_records, append_record
 from config import (
-    CONFIDENT_AI_KEY,
     GEMMA_BASE_URL,
     GEMMA_API_KEY,
     GEMMA_MODEL,
@@ -44,8 +38,7 @@ from robust_judge import RobustJudgeModel
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 3          # small chunks to stay well under DeepEval's 1800s gather timeout
-MAX_JSON_RETRIES = 3    # retries per LLM call when output is malformed or schema-invalid
+CHUNK_SIZE = 3  # small chunks to stay well under DeepEval's 1800s gather timeout
 
 CHECKPOINT_BY_PIPELINE = {
     "hybrid": CHECKPOINT_SCORE_HYBRID,
@@ -53,95 +46,9 @@ CHECKPOINT_BY_PIPELINE = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Robust judge wrapper — retries on malformed JSON *and* Pydantic validation
-# errors (e.g. Gemma returns {"reason": "..."} but omits required "verdict")
-# ---------------------------------------------------------------------------
-
-class _RobustJudgeLLM(DeepEvalBaseLLM):
-    """Wraps any DeepEvalBaseLLM and retries generation when the response is
-    either not valid JSON (schema=None path) or fails Pydantic schema
-    validation (schema!=None path).  Both sync and async paths are covered
-    because DeepEval metrics run with async_mode=True."""
-
-    def __init__(self, inner: DeepEvalBaseLLM) -> None:
-        self._inner = inner
-
-    # --- DeepEvalBaseLLM interface -----------------------------------------
-
-    def get_model_name(self) -> str:
-        return self._inner.get_model_name()
-
-    def load_model(self):
-        return self._inner.load_model()
-
-    # --- helpers -----------------------------------------------------------
-
-    @staticmethod
-    def _is_valid_json(text: str) -> bool:
-        """Return True if *text* contains a parseable JSON object or array."""
-        try:
-            cleaned = re.sub(
-                r"^```(?:json)?\s*|\s*```$", "", str(text).strip(), flags=re.DOTALL
-            )
-            json.loads(cleaned)
-            return True
-        except (json.JSONDecodeError, ValueError):
-            return False
-
-    # --- sync --------------------------------------------------------------
-
-    def generate(self, prompt: str, schema=None):
-        last_exc: Exception = RuntimeError("No attempts made")
-        for attempt in range(1, MAX_JSON_RETRIES + 1):
-            try:
-                result, cost = self._inner.generate(prompt, schema=schema)
-                # schema=None → DeepEval expects a raw string; validate JSON ourselves
-                if schema is None and not self._is_valid_json(result):
-                    raise ValueError(f"Response is not valid JSON: {str(result)[:120]}")
-                # schema!=None → DeepEval already called schema.model_validate()
-                # inside _inner.generate; if it raised ValidationError it bubbles here
-                return result, cost
-            except (ValidationError, ValueError) as exc:
-                last_exc = exc
-                logger.warning(
-                    "[RobustJudge] Invalid output on attempt %d/%d (sync): %s — retrying",
-                    attempt, MAX_JSON_RETRIES, exc,
-                )
-        logger.error(
-            "[RobustJudge] All %d retries exhausted (sync) — re-raising", MAX_JSON_RETRIES
-        )
-        raise last_exc
-
-    # --- async -------------------------------------------------------------
-
-    async def a_generate(self, prompt: str, schema=None):
-        last_exc: Exception = RuntimeError("No attempts made")
-        for attempt in range(1, MAX_JSON_RETRIES + 1):
-            try:
-                result, cost = await self._inner.a_generate(prompt, schema=schema)
-                if schema is None and not self._is_valid_json(result):
-                    raise ValueError(f"Response is not valid JSON: {str(result)[:120]}")
-                return result, cost
-            except (ValidationError, ValueError) as exc:
-                last_exc = exc
-                logger.warning(
-                    "[RobustJudge] Invalid output on attempt %d/%d (async): %s — retrying",
-                    attempt, MAX_JSON_RETRIES, exc,
-                )
-        logger.error(
-            "[RobustJudge] All %d retries exhausted (async) — re-raising", MAX_JSON_RETRIES
-        )
-        raise last_exc
-
-
-# ---------------------------------------------------------------------------
-# Test-case builder
-# ---------------------------------------------------------------------------
-
 def _build_test_cases(records: list[dict], pipeline: str) -> list[LLMTestCase]:
     context_key = f"{pipeline}_contexts"
-    answer_key  = f"{pipeline}_answer"
+    answer_key = f"{pipeline}_answer"
     cases = []
     for rec in records:
         answer = rec.get(answer_key, "").strip()
@@ -158,16 +65,12 @@ def _build_test_cases(records: list[dict], pipeline: str) -> list[LLMTestCase]:
     return cases
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
 def run() -> None:
     records = load_records(CHECKPOINT_GENERATE)
     if not records:
         raise RuntimeError("[PHASE4] No generation records found — run phase 3 first.")
 
-    logger.info("[PHASE4] Logging into Confident AI...")
+    logger.info("[PHASE4] Initialising judge model...")
     confident_key = os.environ.get("CONFIDENT_AI_KEY", "")
     logger.info(
         "[PHASE4] Confident AI key (first 10 chars): '%s'",
@@ -179,7 +82,6 @@ def run() -> None:
         base_url=GEMMA_BASE_URL,
         api_key=GEMMA_API_KEY,
     )
-    judge = _RobustJudgeLLM(_inner_judge)
 
     metrics = [
         AnswerRelevancyMetric(model=judge, threshold=0.5),
@@ -197,12 +99,12 @@ def run() -> None:
             continue
 
         checkpoint_path = CHECKPOINT_BY_PIPELINE[pipeline]
-        done_records    = load_records(checkpoint_path)
-        done_inputs     = {r["input"] for r in done_records}
+        done_records = load_records(checkpoint_path)
+        done_inputs = {r["input"] for r in done_records}
 
-        # Enumerate with stable original index so checkpoint idx never shifts
-        # when we resume from a partial run.
-        indexed_remaining = [
+        # Pair each test case with its stable original index so checkpoint
+        # idx never shifts when we resume from a partial run.
+        indexed_remaining: list[tuple[int, LLMTestCase]] = [
             (orig_idx, tc)
             for orig_idx, tc in enumerate(test_cases)
             if tc.input not in done_inputs
@@ -217,9 +119,12 @@ def run() -> None:
             logger.info("[PHASE4] Pipeline '%s' already complete, skipping", pipeline)
             continue
 
-        total_chunks = -(-len(remaining) // CHUNK_SIZE)
-        for chunk_i, start in enumerate(range(0, len(remaining), CHUNK_SIZE), 1):
-            chunk = remaining[start : start + CHUNK_SIZE]
+        total_chunks = -(-len(indexed_remaining) // CHUNK_SIZE)  # ceiling division
+        for chunk_i, start in enumerate(range(0, len(indexed_remaining), CHUNK_SIZE), 1):
+            chunk_pairs = indexed_remaining[start : start + CHUNK_SIZE]
+            chunk_tcs = [tc for _, tc in chunk_pairs]
+            input_to_idx = {tc.input: idx for idx, tc in chunk_pairs}
+
             logger.info(
                 "[PHASE4] %s chunk %d/%d (%d cases)",
                 pipeline, chunk_i, total_chunks, len(chunk_tcs),
@@ -233,13 +138,10 @@ def run() -> None:
                 cache_config=CacheConfig(use_cache=True),
             )
 
-            # Map input → original index for stable checkpoint writing
-            input_to_idx = {tc.input: idx for idx, tc in chunk_pairs}
-
             for r in results.test_results:
                 append_record(checkpoint_path, {
-                    "idx":           input_to_idx.get(r.input, -1),
-                    "input":         r.input,
+                    "idx": input_to_idx.get(r.input, -1),
+                    "input": r.input,
                     "actual_output": r.actual_output,
                     "metrics": {
                         m.name: m.score for m in (r.metrics_data or [])
