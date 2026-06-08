@@ -6,12 +6,16 @@ After each chunk the scored records are appended to a JSONL checkpoint so
 the phase can resume from where it left off on restart.
 
 The judge LLM is the same Gemma 4 E2B instance used for generation,
-provided via a thin OpenAIModel wrapper pointing at the custom endpoint.
+provided via RobustJudgeModel — a GPTModel subclass that repairs malformed
+JSON before deepeval's own parser sees it.
 """
 import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from deepeval import evaluate
-from deepeval.models import GPTModel
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import (
     AnswerRelevancyMetric,
@@ -31,10 +35,11 @@ from config import (
     CHECKPOINT_SCORE_HYBRID,
     CHECKPOINT_SCORE_VECTOR,
 )
+from robust_judge import RobustJudgeModel
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 15  # ~15 cases x 4 metrics x ~60s = well under 1800s gather timeout
+CHUNK_SIZE = 15
 
 CHECKPOINT_BY_PIPELINE = {
     "hybrid": CHECKPOINT_SCORE_HYBRID,
@@ -49,7 +54,7 @@ def _build_test_cases(records: list[dict], pipeline: str) -> list[LLMTestCase]:
     for rec in records:
         answer = rec.get(answer_key, "").strip()
         if not answer:
-            continue  # skip rows where generation errored
+            continue
         cases.append(
             LLMTestCase(
                 input=rec["question"],
@@ -67,11 +72,10 @@ def run() -> None:
         raise RuntimeError("[PHASE4] No generation records found — run phase 3 first.")
 
     logger.info("[PHASE4] Logging into Confident AI...")
-    import os
     confident_key = os.environ.get("CONFIDENT_AI_KEY", "")
     logger.info("[PHASE4] Confident AI key (first 10 chars): '%s'", confident_key[:10] if confident_key else "EMPTY")
 
-    judge = GPTModel(
+    judge = RobustJudgeModel(
         model=GEMMA_MODEL,
         base_url=GEMMA_BASE_URL,
         api_key=GEMMA_API_KEY,
@@ -104,7 +108,7 @@ def run() -> None:
             logger.info("[PHASE4] Pipeline '%s' already complete, skipping", pipeline)
             continue
 
-        total_chunks = -(-len(remaining) // CHUNK_SIZE)  # ceiling division
+        total_chunks = -(-len(remaining) // CHUNK_SIZE)
         for chunk_i, start in enumerate(range(0, len(remaining), CHUNK_SIZE), 1):
             chunk = remaining[start : start + CHUNK_SIZE]
             logger.info(
