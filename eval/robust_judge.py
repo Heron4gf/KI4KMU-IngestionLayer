@@ -1,26 +1,32 @@
-"""RobustJudgeModel — GPTModel subclass that repairs malformed JSON
-before deepeval's trim_and_load_json gets a chance to crash on it.
-
-Strategy: override generate() and a_generate() to mirror the parent's
-logic exactly, but replace the trim_and_load_json() call with our own
-json_repair-backed parser.  We call self.load_model() and self.name just
-like the parent does — no private attributes, no guessing.
+"""RobustJudgeModel — GPTModel subclass that:
+  1. Repairs malformed JSON (markdown fences, bad escapes) via json_repair
+     before deepeval's schema parser sees it.
+  2. Retries on 504 / timeout errors with exponential backoff so a slow
+     upstream doesn't crash the entire evaluation run.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any, Optional, Tuple, Union
+import random
+from typing import Optional, Tuple, Union
 
 from pydantic import BaseModel
+from openai import InternalServerError, APITimeoutError, APIConnectionError
 from deepeval.models import GPTModel
 from deepeval.utils import check_if_multimodal, convert_to_multi_modal_array
 from json_repair import repair_json
 
 logger = logging.getLogger("robust_judge")
 
+_RETRY_EXCEPTIONS = (InternalServerError, APITimeoutError, APIConnectionError)
+_MAX_RETRIES = 4
+_BASE_DELAY = 5.0   # seconds
+_MAX_DELAY  = 60.0  # seconds
 
-def _repair_and_parse(text: str) -> Any:
+
+def _repair_and_parse(text: str) -> object:
     """Strip markdown fences, run json_repair, return parsed object."""
     s = text.strip()
     if s.startswith("```"):
@@ -35,9 +41,16 @@ def _repair_and_parse(text: str) -> Any:
     return json.loads(repaired)
 
 
+def _backoff(attempt: int) -> float:
+    """Full-jitter exponential backoff."""
+    ceiling = min(_MAX_DELAY, _BASE_DELAY * 2 ** attempt)
+    return random.uniform(0, ceiling)
+
+
 class RobustJudgeModel(GPTModel):
-    """Drop-in replacement for GPTModel that tolerates malformed JSON output
-    from small models like Gemma by running json_repair before schema parsing.
+    """Drop-in replacement for GPTModel that tolerates:
+    - Malformed JSON from small models (Gemma, etc.)
+    - Transient 504 / timeout errors from a slow upstream
     """
 
     def generate(
@@ -51,12 +64,27 @@ class RobustJudgeModel(GPTModel):
             content = [{"type": "text", "text": prompt}]
         messages = [{"role": "user", "content": content}]
 
-        completion = client.chat.completions.create(
-            model=self.name,
-            messages=messages,
-            temperature=self.temperature,
-            **self.generation_kwargs,
-        )
+        last_exc: Exception = RuntimeError("no attempts")
+        for attempt in range(_MAX_RETRIES):
+            try:
+                completion = client.chat.completions.create(
+                    model=self.name,
+                    messages=messages,
+                    temperature=self.temperature,
+                    **self.generation_kwargs,
+                )
+                break
+            except _RETRY_EXCEPTIONS as exc:
+                last_exc = exc
+                delay = _backoff(attempt)
+                logger.warning(
+                    "RobustJudgeModel [sync] attempt %d/%d failed (%s) — retrying in %.1fs",
+                    attempt + 1, _MAX_RETRIES, exc, delay,
+                )
+                import time; time.sleep(delay)
+        else:
+            raise last_exc
+
         output = completion.choices[0].message.content or ""
         cost = self.calculate_cost(
             completion.usage.prompt_tokens,
@@ -80,12 +108,27 @@ class RobustJudgeModel(GPTModel):
             content = [{"type": "text", "text": prompt}]
         messages = [{"role": "user", "content": content}]
 
-        completion = await client.chat.completions.create(
-            model=self.name,
-            messages=messages,
-            temperature=self.temperature,
-            **self.generation_kwargs,
-        )
+        last_exc: Exception = RuntimeError("no attempts")
+        for attempt in range(_MAX_RETRIES):
+            try:
+                completion = await client.chat.completions.create(
+                    model=self.name,
+                    messages=messages,
+                    temperature=self.temperature,
+                    **self.generation_kwargs,
+                )
+                break
+            except _RETRY_EXCEPTIONS as exc:
+                last_exc = exc
+                delay = _backoff(attempt)
+                logger.warning(
+                    "RobustJudgeModel [async] attempt %d/%d failed (%s) — retrying in %.1fs",
+                    attempt + 1, _MAX_RETRIES, exc, delay,
+                )
+                await asyncio.sleep(delay)
+        else:
+            raise last_exc
+
         output = completion.choices[0].message.content or ""
         cost = self.calculate_cost(
             completion.usage.prompt_tokens,
