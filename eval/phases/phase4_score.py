@@ -6,16 +6,20 @@ After each chunk the scored records are appended to a JSONL checkpoint so
 the phase can resume from where it left off on restart.
 
 The judge LLM is the same Gemma 4 E2B instance used for generation,
-provided via a thin OpenAIModel wrapper pointing at the custom endpoint.
+provided via RobustJudgeModel — a GPTModel subclass that repairs malformed
+JSON before deepeval's own parser sees it.
 """
 import json
 import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import re
 
 from pydantic import ValidationError
 
 from deepeval import evaluate
-from deepeval.models import GPTModel
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import (
@@ -36,6 +40,7 @@ from config import (
     CHECKPOINT_SCORE_HYBRID,
     CHECKPOINT_SCORE_VECTOR,
 )
+from robust_judge import RobustJudgeModel
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +146,7 @@ def _build_test_cases(records: list[dict], pipeline: str) -> list[LLMTestCase]:
     for rec in records:
         answer = rec.get(answer_key, "").strip()
         if not answer:
-            continue  # skip rows where generation errored
+            continue
         cases.append(
             LLMTestCase(
                 input=rec["question"],
@@ -163,14 +168,13 @@ def run() -> None:
         raise RuntimeError("[PHASE4] No generation records found — run phase 3 first.")
 
     logger.info("[PHASE4] Logging into Confident AI...")
-    import os
     confident_key = os.environ.get("CONFIDENT_AI_KEY", "")
     logger.info(
         "[PHASE4] Confident AI key (first 10 chars): '%s'",
         confident_key[:10] if confident_key else "EMPTY",
     )
 
-    _inner_judge = GPTModel(
+    judge = RobustJudgeModel(
         model=GEMMA_MODEL,
         base_url=GEMMA_BASE_URL,
         api_key=GEMMA_API_KEY,
@@ -213,14 +217,9 @@ def run() -> None:
             logger.info("[PHASE4] Pipeline '%s' already complete, skipping", pipeline)
             continue
 
-        total_chunks = -(-len(indexed_remaining) // CHUNK_SIZE)  # ceiling division
-
-        for chunk_i, chunk_start in enumerate(
-            range(0, len(indexed_remaining), CHUNK_SIZE), 1
-        ):
-            chunk_pairs = indexed_remaining[chunk_start : chunk_start + CHUNK_SIZE]
-            chunk_tcs   = [p[1] for p in chunk_pairs]
-
+        total_chunks = -(-len(remaining) // CHUNK_SIZE)
+        for chunk_i, start in enumerate(range(0, len(remaining), CHUNK_SIZE), 1):
+            chunk = remaining[start : start + CHUNK_SIZE]
             logger.info(
                 "[PHASE4] %s chunk %d/%d (%d cases)",
                 pipeline, chunk_i, total_chunks, len(chunk_tcs),
