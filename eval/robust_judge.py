@@ -1,8 +1,8 @@
 """RobustJudgeModel — GPTModel subclass that:
-  1. Repairs malformed JSON (markdown fences, bad escapes) via json_repair
-     before deepeval's schema parser sees it.
-  2. Retries on 504 / timeout errors with exponential backoff so a slow
-     upstream doesn't crash the entire evaluation run.
+  1. Repairs malformed JSON (markdown fences, bad escapes) via json_repair.
+  2. Fills in missing required fields with safe defaults so Pydantic
+     validation never crashes on incomplete model output.
+  3. Retries on 504 / timeout errors with exponential backoff.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import logging
 import random
 from typing import Optional, Tuple, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from openai import InternalServerError, APITimeoutError, APIConnectionError
 from deepeval.models import GPTModel
 from deepeval.utils import check_if_multimodal, convert_to_multi_modal_array
@@ -22,8 +22,20 @@ logger = logging.getLogger("robust_judge")
 
 _RETRY_EXCEPTIONS = (InternalServerError, APITimeoutError, APIConnectionError)
 _MAX_RETRIES = 4
-_BASE_DELAY = 5.0   # seconds
-_MAX_DELAY  = 60.0  # seconds
+_BASE_DELAY = 5.0
+_MAX_DELAY = 60.0
+
+# Safe defaults injected when the model omits a required field.
+# Covers every schema deepeval uses for its built-in metrics.
+_FIELD_DEFAULTS: dict = {
+    "verdict": "no",
+    "verdicts": [],
+    "reason": "(no reason provided)",
+    "score": 0,
+    "statements": [],
+    "truths": [],
+    "claims": [],
+}
 
 
 def _repair_and_parse(text: str) -> object:
@@ -41,16 +53,86 @@ def _repair_and_parse(text: str) -> object:
     return json.loads(repaired)
 
 
+def _fill_defaults(data: object, schema: type[BaseModel]) -> object:
+    """Recursively walk parsed data and inject _FIELD_DEFAULTS for any field
+    that the schema requires but the model omitted."""
+    if not isinstance(data, dict):
+        return data
+
+    # Fill top-level missing fields
+    for field_name, field_info in schema.model_fields.items():
+        if field_name not in data and field_name in _FIELD_DEFAULTS:
+            logger.warning(
+                "RobustJudgeModel: model omitted required field '%s', injecting default",
+                field_name,
+            )
+            data[field_name] = _FIELD_DEFAULTS[field_name]
+
+    # Recurse into list items if the list items are themselves BaseModel schemas
+    for field_name, field_info in schema.model_fields.items():
+        annotation = field_info.annotation
+        # Unwrap Optional / list generics to find nested BaseModel types
+        nested = _unwrap_list_annotation(annotation)
+        if nested is not None and isinstance(data.get(field_name), list):
+            data[field_name] = [
+                _fill_defaults(item, nested) if isinstance(item, dict) else item
+                for item in data[field_name]
+            ]
+
+    return data
+
+
+def _unwrap_list_annotation(annotation) -> type[BaseModel] | None:
+    """Return the item type if annotation is list[SomeBaseModel], else None."""
+    try:
+        import typing
+        origin = getattr(annotation, "__origin__", None)
+        if origin is list:
+            args = getattr(annotation, "__args__", ())
+            if args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+                return args[0]
+        # Handle Optional[list[X]]
+        if origin is Union:
+            for arg in getattr(annotation, "__args__", ()):
+                result = _unwrap_list_annotation(arg)
+                if result is not None:
+                    return result
+    except Exception:
+        pass
+    return None
+
+
+try:
+    from typing import Union  # noqa: ensure Union is always available above
+except ImportError:
+    pass
+
+
 def _backoff(attempt: int) -> float:
-    """Full-jitter exponential backoff."""
     ceiling = min(_MAX_DELAY, _BASE_DELAY * 2 ** attempt)
     return random.uniform(0, ceiling)
 
 
+def _validate(data: object, schema: type[BaseModel]) -> BaseModel:
+    """Validate data against schema, filling defaults on ValidationError."""
+    try:
+        return schema.model_validate(data)
+    except ValidationError:
+        filled = _fill_defaults(data if isinstance(data, dict) else {}, schema)
+        try:
+            return schema.model_validate(filled)
+        except ValidationError as exc:
+            logger.error(
+                "RobustJudgeModel: schema validation failed even after filling defaults.\n"
+                "Schema: %s\nData: %s\nErrors: %s",
+                schema.__name__, filled, exc,
+            )
+            raise
+
+
 class RobustJudgeModel(GPTModel):
-    """Drop-in replacement for GPTModel that tolerates:
-    - Malformed JSON from small models (Gemma, etc.)
-    - Transient 504 / timeout errors from a slow upstream
+    """Drop-in replacement for GPTModel that tolerates malformed or
+    incomplete JSON output from small models like Gemma.
     """
 
     def generate(
@@ -94,7 +176,7 @@ class RobustJudgeModel(GPTModel):
 
         if schema:
             data = _repair_and_parse(output)
-            return schema.model_validate(data), cost
+            return _validate(data, schema), cost
         return output, cost
 
     async def a_generate(
@@ -138,5 +220,5 @@ class RobustJudgeModel(GPTModel):
 
         if schema:
             data = _repair_and_parse(output)
-            return schema.model_validate(data), cost
+            return _validate(data, schema), cost
         return output, cost
