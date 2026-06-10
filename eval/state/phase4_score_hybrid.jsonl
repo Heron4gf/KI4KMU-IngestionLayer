@@ -192,3 +192,4 @@
 {"idx": 179, "input": "What are the key terms of the invoice?", "actual_output": "Payment is due within 30 days. Make all checks payable to Services Vendor Inc.", "metrics": {"Answer Relevancy": 1.0, "Faithfulness": 1.0, "Contextual Recall": 1.0, "Contextual Precision": 1.0}}
 {"idx": 9, "input": "What is the name of the two companies?", "actual_output": "Tesla and Netflix.", "metrics": {"Answer Relevancy": 1.0, "Faithfulness": 1.0, "Contextual Recall": 0.0, "Contextual Precision": 0.0}}
 {"idx": 9, "input": "What is the name of the two companies?", "actual_output": "Tesla and Netflix.", "metrics": {"Answer Relevancy": 1.0, "Faithfulness": 0.6666666666666666, "Contextual Recall": 0.0, "Contextual Precision": 0.0}}
+{"idx": 9, "input": "What is the name of the two companies?", "actual_output": "Tesla and Netflix.", "metrics": {"Answer Relevancy": 1.0, "Faithfulness": 1.0, "Contextual Recall": 0.0, "Contextual Precision": 0.0}}
