@@ -38,7 +38,7 @@ from robust_judge import RobustJudgeModel
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 3  # small chunks to stay well under DeepEval's 1800s gather timeout
+CHUNK_SIZE = 1  # small chunks to stay well under DeepEval's 1800s gather timeout
 
 CHECKPOINT_BY_PIPELINE = {
     "hybrid": CHECKPOINT_SCORE_HYBRID,
