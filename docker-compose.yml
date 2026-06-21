@@ -39,6 +39,13 @@ services:
     volumes:
       - ./prompts/captioner.md:/prompts/captioner.md:ro
       - ki4kmu_data:/ki4kmu_data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
       interval: 10s
