@@ -1,6 +1,6 @@
 # Ontology Reference
 
-> The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB (Ontotext).
+> The system uses a custom RDFS ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB (Ontotext).
 
 ---
 
@@ -55,7 +55,8 @@ rdf:type
 | Subject | Predicate | Object | Direction | Description |
 |---------|-----------|--------|-----------|-------------|
 | `Chunk` | `belongsTo` | `Document` | → | Links a chunk to its source document |
-| `Chunk` / `Text` / `Image` | `isContained` | `Section` | → | Chunk/section is contained in a section *(direction: chunk is contained in section)* |
+| `Section` | `isContained` | `Chunk` | → | A section is contained in its parent chunk |
+| `Text` / `Image` | `isContained` | `Section` | → | A text or image unit is contained in its parent section |
 | `Section` | `hasConcept` | `Concept` | → | Associates a section with a retrieval concept |
 | `Text` | `hasKeyphrase` | `Keyphrase` | → | Associates a text section with a keyphrase |
 | `Concept` | `coOccursWith` | `Concept` | ↔ | Co-occurrence edge between concepts on the same section *(symmetric, built post-ingestion)* |
@@ -64,15 +65,15 @@ rdf:type
 
 ```
 Document
-  └── belongsTo ──→ Chunk
+  └──← belongsTo── Chunk
                       │
-                      ├── isContained ──→ Section ──→ hasConcept ──→ Concept
-                      │                            │
-                      │                            └──→ coOccursWith ──→ Concept (symmetric)
-                      │
-                      └── isContained ──→ Text ──→ hasKeyphrase ──→ Keyphrase
-                      │
-                      └── isContained ──→ Image
+                      ←── isContained── Section ──→ hasConcept ──→ Concept
+                                            │                           │
+                                            │                           └──→ coOccursWith ──→ Concept (symmetric)
+                                            │
+                                        ←── isContained── Text ──→ hasKeyphrase ──→ Keyphrase
+                                        │
+                                        └── isContained── Image
 ```
 
 ---
@@ -158,7 +159,6 @@ Document
 
 | Prefix | URI |
 |--------|-----|
-| `ki4kmu` | `http://example.com/ki4kmu#` |
+| `ki4kmu` | `http://ki4kmu.fhnw.ch/ontology#` |
 | `rdf` | `http://www.w3.org/1999/02/22-rdf-syntax-ns#` |
 | `rdfs` | `http://www.w3.org/2000/01/rdf-schema#` |
-| `owl` | `http://www.w3.org/2002/07/owl#` |

@@ -60,14 +60,15 @@ https://github.com/user-attachments/assets/25fc481c-ed59-4811-9182-c78dda041a5f
 | Vector DB | [ChromaDB](https://www.trychroma.com/) |
 | Knowledge Graph | [GraphDB (Ontotext)](https://graphdb.ontotext.com/) |
 | Text Embedding | [pplx-embed-v1-0.6B](https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b) |
-| Section Extraction SLM | [Gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) |
-| Reranking | [Ettin Reranker](https://huggingface.co/blog/ettin-reranker) |
+| Section Extraction SLM | [Gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) (self-hosted) |
+| Image Captioning | [Florence-2-base](https://huggingface.co/microsoft/Florence-2-base) (local) |
+| Reranking | [Ettin Reranker 400M](https://huggingface.co/blog/ettin-reranker) |
 | Observability | [Langfuse](https://langfuse.com/) |
 | PDF Parsing | [PyMuPDF4LLM](https://github.com/pymupdf/RAG) |
 
 ## Ontology
 
-The system uses a custom RDF/OWL ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB. See the full [Ontology Reference](docs/ontology.md) for class definitions, relationships, datatype properties, and example RDF triples.
+The system uses a custom RDFS ontology (`ontology/ontology.ttl`) to represent document knowledge in GraphDB. See the full [Ontology Reference](docs/ontology.md) for class definitions, relationships, datatype properties, and example RDF triples.
 
 ## Graph Traversal
 

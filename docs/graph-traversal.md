@@ -97,7 +97,7 @@ Each retrieval arm operates independently and contributes candidates to a merged
 | 2 | GraphDB keyword search | Sections whose concepts/keyphrases match query terms | `VECTOR_TOP_K` (default: 50) |
 | 3 | GraphDB 2-hop concept traversal | Sections sharing concepts with vector results | Up to `TRAVERSAL_LIMIT` (default: 100) total |
 | 4 | GraphDB 3-hop co-occurrence traversal | Sections thematically adjacent to vector results | Up to `TRAVERSAL_LIMIT` (default: 100) total |
-| 5 | Qwen3-Reranker-0.6B | Final ranked top-k from merged pool | `top_k` |
+| 5 | Ettin Reranker 400M | Final ranked top-k from merged pool | `top_k` |
 
 ### Pipeline Flow
 
@@ -146,12 +146,12 @@ The following SPARQL queries are used for graph-based retrieval:
 
 ```sparql
 # find_related_chunks_via_concept.sparql
-PREFIX ki4kmu: <http://example.com/ki4kmu#>
+PREFIX ki4kmu: <http://ki4kmu.fhnw.ch/ontology#>
 
 SELECT DISTINCT ?chunk ?chunk_text ?page_number ?seed_section
 WHERE {
   ?seed_section ki4kmu:hasConcept ?concept .
-  ?concept ki4kmu:hasConcept ?related_section .
+  ?related_section ki4kmu:hasConcept ?concept .
   ?related_section ki4kmu:isContained ?chunk .
   ?chunk ki4kmu:text ?chunk_text .
   ?chunk ki4kmu:page_number ?page_number .
@@ -163,13 +163,13 @@ WHERE {
 
 ```sparql
 # find_related_chunks_via_cooccurrence.sparql
-PREFIX ki4kmu: <http://example.com/ki4kmu#>
+PREFIX ki4kmu: <http://ki4kmu.fhnw.ch/ontology#>
 
 SELECT DISTINCT ?chunk ?chunk_text ?page_number ?seed_section
 WHERE {
   ?seed_section ki4kmu:hasConcept ?concept_a .
   ?concept_a ki4kmu:coOccursWith ?concept_b .
-  ?concept_b ki4kmu:hasConcept ?related_section .
+  ?related_section ki4kmu:hasConcept ?concept_b .
   ?related_section ki4kmu:isContained ?chunk .
   ?chunk ki4kmu:text ?chunk_text .
   ?chunk ki4kmu:page_number ?page_number .

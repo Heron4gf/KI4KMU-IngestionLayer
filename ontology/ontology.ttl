@@ -1,122 +1,82 @@
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-@prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix ki4kmu: <http://ki4kmu.fhnw.ch/ontology#> .
 
 <http://ki4kmu.fhnw.ch/ontology>
-    a owl:Ontology ;
     rdfs:label "KI-4-KMU Ontology"@en ;
-    rdfs:comment "Ontology for the KI-4-KMU document ingestion and knowledge graph pipeline."@en ;
-    owl:versionInfo "1.1.0" .
+    rdfs:comment "RDFS ontology for the KI-4-KMU document ingestion and knowledge graph pipeline."@en .
 
-# ---------------------------------------------------------------------------
-# Classes
-# ---------------------------------------------------------------------------
+# --- Classes ---------------------------------------------------------------
 
-ki4kmu:Document a owl:Class ;
+ki4kmu:Document a rdfs:Class ;
     rdfs:label "Document"@en ;
     rdfs:comment "An ingested PDF document."@en .
 
-ki4kmu:Chunk a owl:Class ;
+ki4kmu:Chunk a rdfs:Class ;
     rdfs:label "Chunk"@en ;
     rdfs:comment "A text chunk extracted from a document."@en .
 
-ki4kmu:Section a owl:Class ;
+ki4kmu:Section a rdfs:Class ;
     rdfs:label "Section"@en ;
-    rdfs:comment "A logical section identified within a document."@en .
+    rdfs:comment "A logical section identified within a chunk."@en .
 
-ki4kmu:Text a owl:Class ;
-    rdfs:label "Text Section"@en ;
-    rdfs:comment "A prose/content section."@en .
+ki4kmu:Text a rdfs:Class ;
+    rdfs:subClassOf ki4kmu:Section ;
+    rdfs:label "Text Section"@en .
 
-ki4kmu:Image a owl:Class ;
+ki4kmu:Image a rdfs:Class ;
+    rdfs:subClassOf ki4kmu:Section ;
     rdfs:label "Image"@en ;
-    rdfs:comment "An image extracted from a document, or an image-typed section."@en .
+    rdfs:comment "An image extracted from a document, represented by its caption."@en .
 
-ki4kmu:Concept a owl:Class ;
-    rdfs:label "Concept"@en ;
-    rdfs:comment "A concept that can be assigned to sections for categorization."@en .
+ki4kmu:Concept a rdfs:Class ;
+    rdfs:label "Concept"@en .
 
-ki4kmu:Keyphrase a owl:Class ;
+ki4kmu:Keyphrase a rdfs:Class ;
     rdfs:label "Keyphrase"@en ;
-    rdfs:comment "A lemmatized keyphrase extracted from text for concept matching."@en .
+    rdfs:comment "A lemmatized keyphrase extracted from text for deterministic matching."@en .
 
-# ---------------------------------------------------------------------------
-# Object Properties
-# ---------------------------------------------------------------------------
+# --- Properties ------------------------------------------------------------
 
-ki4kmu:belongsTo a owl:ObjectProperty ;
+ki4kmu:belongsTo a rdf:Property ;
     rdfs:label "belongs to"@en ;
-    rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Image) ] ;
+    rdfs:domain ki4kmu:Chunk ;
     rdfs:range ki4kmu:Document .
 
-ki4kmu:isContained a owl:ObjectProperty ;
+# NOTE: no global domain/range — the property links a contained unit to its
+# container at two levels (Text/Image -> Section, Section -> Chunk) and RDFS
+# has no union classes. Containment is enforced by the ingestion code.
+ki4kmu:isContained a rdf:Property ;
     rdfs:label "is contained in"@en ;
-    rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Text ki4kmu:Image) ] ;
-    rdfs:range ki4kmu:Section .
+    rdfs:comment "Links a contained unit to its container (Section to Chunk, Text/Image to Section)."@en .
 
-ki4kmu:hasConcept a owl:ObjectProperty ;
+ki4kmu:hasConcept a rdf:Property ;
     rdfs:label "has concept"@en ;
     rdfs:domain ki4kmu:Section ;
     rdfs:range ki4kmu:Concept .
 
-ki4kmu:hasKeyphrase a owl:ObjectProperty ;
+ki4kmu:hasKeyphrase a rdf:Property ;
     rdfs:label "has keyphrase"@en ;
     rdfs:domain ki4kmu:Text ;
     rdfs:range ki4kmu:Keyphrase .
 
-ki4kmu:coOccursWith a owl:ObjectProperty, owl:SymmetricProperty ;
+# Symmetry cannot be declared in RDFS (owl:SymmetricProperty is OWL);
+# build_concept_cooccurrence() already materializes both directions.
+ki4kmu:coOccursWith a rdf:Property ;
     rdfs:label "co-occurs with"@en ;
-    rdfs:comment "Links two Concepts that appear together on at least one Section. Built post-ingestion."@en ;
+    rdfs:comment "Links two Concepts appearing together on at least one Section. Both directions inserted post-ingestion."@en ;
     rdfs:domain ki4kmu:Concept ;
     rdfs:range ki4kmu:Concept .
 
-# ---------------------------------------------------------------------------
-# Datatype Properties
-# ---------------------------------------------------------------------------
+# --- Datatype-valued properties (rdf:Property with literal ranges) ----------
 
-ki4kmu:document_id a owl:DatatypeProperty ;
-    rdfs:label "document ID"@en ;
-    rdfs:domain ki4kmu:Document ;
-    rdfs:range xsd:string .
-
-ki4kmu:pdf_hash a owl:DatatypeProperty ;
-    rdfs:label "PDF hash"@en ;
-    rdfs:domain ki4kmu:Document ;
-    rdfs:range xsd:string .
-
-ki4kmu:chunk_index a owl:DatatypeProperty ;
-    rdfs:label "chunk index"@en ;
-    rdfs:domain ki4kmu:Chunk ;
-    rdfs:range xsd:integer .
-
-ki4kmu:text a owl:DatatypeProperty ;
-    rdfs:label "text"@en ;
-    rdfs:domain ki4kmu:Chunk ;
-    rdfs:range xsd:string .
-
-ki4kmu:page_number a owl:DatatypeProperty ;
-    rdfs:label "page number"@en ;
-    rdfs:domain [ owl:unionOf (ki4kmu:Chunk ki4kmu:Image) ] ;
-    rdfs:range xsd:integer .
-
-ki4kmu:section_id a owl:DatatypeProperty ;
-    rdfs:label "section ID"@en ;
-    rdfs:domain ki4kmu:Section ;
-    rdfs:range xsd:string .
-
-ki4kmu:section_uuid a owl:DatatypeProperty ;
-    rdfs:label "section UUID"@en ;
-    rdfs:domain ki4kmu:Section ;
-    rdfs:range xsd:string .
-
-ki4kmu:image_base64 a owl:DatatypeProperty ;
-    rdfs:label "image base64"@en ;
-    rdfs:domain ki4kmu:Image ;
-    rdfs:range xsd:string .
-
-ki4kmu:concept_label a owl:DatatypeProperty ;
-    rdfs:label "concept label"@en ;
-    rdfs:domain ki4kmu:Concept ;
-    rdfs:range xsd:string .
+ki4kmu:document_id  a rdf:Property ; rdfs:domain ki4kmu:Document ; rdfs:range xsd:string .
+ki4kmu:pdf_hash     a rdf:Property ; rdfs:domain ki4kmu:Document ; rdfs:range xsd:string .
+ki4kmu:text         a rdf:Property ; rdfs:domain ki4kmu:Chunk    ; rdfs:range xsd:string .
+ki4kmu:chunk_index  a rdf:Property ; rdfs:domain ki4kmu:Chunk    ; rdfs:range xsd:integer .
+ki4kmu:page_number  a rdf:Property ; rdfs:range xsd:integer .   # used on Chunk and Image
+ki4kmu:section_id   a rdf:Property ; rdfs:domain ki4kmu:Section ; rdfs:range xsd:string .
+ki4kmu:section_uuid a rdf:Property ; rdfs:domain ki4kmu:Section ; rdfs:range xsd:string .
+ki4kmu:image_base64 a rdf:Property ; rdfs:domain ki4kmu:Image   ; rdfs:range xsd:string .
+ki4kmu:concept_label a rdf:Property ; rdfs:domain ki4kmu:Concept ; rdfs:range xsd:string .
